@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { ThoughtChatHistoryMessage, ThoughtChatRole } from "./thought-chat";
 import type { CockpitAgentOutput } from "./schema";
 
 export type SessionState = {
@@ -13,11 +14,17 @@ export type SessionState = {
 
 export interface CockpitMemoryStore {
   loadSessionState(sessionId?: string): Promise<SessionState | null>;
+  loadChatMessages?(sessionId?: string): Promise<ThoughtChatHistoryMessage[]>;
   saveSessionState(args: {
     sessionId?: string;
     message: string;
     output: CockpitAgentOutput;
   }): Promise<{ sessionId?: string; saved: boolean; reason?: string }>;
+  saveChatMessage?(args: {
+    sessionId?: string;
+    role: ThoughtChatRole;
+    content: string;
+  }): Promise<{ saved: boolean; reason?: string }>;
   addParkingLotItem(args: {
     sessionId?: string;
     content: string;
@@ -39,7 +46,19 @@ export class NullCockpitMemoryStore implements CockpitMemoryStore {
     return null;
   }
 
-  async saveSessionState(): Promise<{ saved: boolean; reason: string }> {
+  async loadChatMessages(): Promise<ThoughtChatHistoryMessage[]> {
+    return [];
+  }
+
+  async saveSessionState(): Promise<{
+    sessionId?: string;
+    saved: boolean;
+    reason: string;
+  }> {
+    return { saved: false, reason: this.reason };
+  }
+
+  async saveChatMessage(): Promise<{ saved: boolean; reason: string }> {
     return { saved: false, reason: this.reason };
   }
 
@@ -82,6 +101,31 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
       proofNeeded: data.proof_needed,
       status: data.status,
     };
+  }
+
+  async loadChatMessages(sessionId?: string): Promise<ThoughtChatHistoryMessage[]> {
+    let query = this.supabase
+      .from("cockpit_chat_messages")
+      .select("role,content,created_at")
+      .eq("user_id", this.userId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    query = sessionId ? query.eq("session_id", sessionId) : query.is("session_id", null);
+
+    const { data, error } = await query;
+
+    if (error || !data) {
+      return [];
+    }
+
+    return data
+      .slice()
+      .reverse()
+      .map((message) => ({
+        role: message.role as ThoughtChatRole,
+        content: message.content,
+      }));
   }
 
   async saveSessionState({
@@ -129,6 +173,25 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
     }
 
     return { sessionId: data.id, saved: true };
+  }
+
+  async saveChatMessage({
+    sessionId,
+    role,
+    content,
+  }: {
+    sessionId?: string;
+    role: ThoughtChatRole;
+    content: string;
+  }): Promise<{ saved: boolean; reason?: string }> {
+    const { error } = await this.supabase.from("cockpit_chat_messages").insert({
+      user_id: this.userId,
+      session_id: sessionId ?? null,
+      role,
+      content,
+    });
+
+    return error ? { saved: false, reason: error.message } : { saved: true };
   }
 
   async addParkingLotItem({

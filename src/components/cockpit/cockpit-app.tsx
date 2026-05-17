@@ -23,6 +23,7 @@ import {
   type CockpitTurnResult,
 } from "@/lib/cockpit/schema";
 import { CockpitPanels } from "@/components/cockpit/cockpit-panels";
+import { AuthPanel } from "@/components/cockpit/auth-panel";
 import { GeneratedSurfaceSlot } from "@/components/cockpit/generated-surface-slot";
 import { ThoughtChatLane } from "@/components/cockpit/thought-chat-lane";
 import {
@@ -342,6 +343,7 @@ export function CockpitApp() {
               <span>Memory</span>
               <strong>{memoryStatus}</strong>
             </div>
+            <AuthPanel />
           </div>
         </aside>
 
