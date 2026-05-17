@@ -79,20 +79,33 @@ export function parseKernelState(rawState: string | null): CockpitKernelState {
 
     const initial = createInitialKernelState();
 
+    if (!isValidPersistedKernelState(parsed)) {
+      return initial;
+    }
+
     return {
-      output: isCockpitOutput(parsed.output) ? parsed.output : initial.output,
+      output:
+        "output" in parsed && isCockpitOutput(parsed.output)
+          ? parsed.output
+          : initial.output,
       sessionId:
         typeof parsed.sessionId === "string" && parsed.sessionId.length > 0
           ? parsed.sessionId
           : undefined,
-      mode: isCockpitMode(parsed.mode) ? parsed.mode : initial.mode,
-      theme: isTheme(parsed.theme) ? parsed.theme : initial.theme,
-      generatedSurface: isGeneratedSurface(parsed.generatedSurface)
-        ? parsed.generatedSurface
-        : initial.generatedSurface,
-      thoughtChat: Array.isArray(parsed.thoughtChat)
-        ? parsed.thoughtChat.filter(isThoughtChatMessage).slice(-20)
-        : initial.thoughtChat,
+      mode:
+        "mode" in parsed && isCockpitMode(parsed.mode)
+          ? parsed.mode
+          : initial.mode,
+      theme: "theme" in parsed && isTheme(parsed.theme) ? parsed.theme : initial.theme,
+      generatedSurface:
+        "generatedSurface" in parsed &&
+        isGeneratedSurface(parsed.generatedSurface)
+          ? parsed.generatedSurface
+          : initial.generatedSurface,
+      thoughtChat:
+        "thoughtChat" in parsed && Array.isArray(parsed.thoughtChat)
+          ? parsed.thoughtChat.slice(-20)
+          : initial.thoughtChat,
     };
   } catch {
     return createInitialKernelState();
@@ -180,6 +193,23 @@ function isCockpitOutput(value: unknown): value is CockpitAgentOutput {
   );
 }
 
+function isValidPersistedKernelState(
+  value: Record<string, unknown>,
+): value is Partial<CockpitKernelState> {
+  return (
+    (!("output" in value) || isCockpitOutput(value.output)) &&
+    (!("sessionId" in value) ||
+      (typeof value.sessionId === "string" && value.sessionId.length > 0)) &&
+    (!("mode" in value) || isCockpitMode(value.mode)) &&
+    (!("theme" in value) || isTheme(value.theme)) &&
+    (!("generatedSurface" in value) ||
+      isGeneratedSurface(value.generatedSurface)) &&
+    (!("thoughtChat" in value) ||
+      (Array.isArray(value.thoughtChat) &&
+        value.thoughtChat.every(isThoughtChatMessage)))
+  );
+}
+
 function isThoughtChatMessage(value: unknown): value is ThoughtChatMessage {
   return (
     isRecord(value) &&
@@ -209,6 +239,21 @@ function isGeneratedSurface(value: unknown): value is GeneratedSurface {
       value.kind === "prompt_mentor" ||
       value.kind === "experiment_setup") &&
     typeof value.title === "string" &&
-    typeof value.body === "string"
+    typeof value.body === "string" &&
+    (value.actions === undefined || isGeneratedSurfaceActions(value.actions))
+  );
+}
+
+function isGeneratedSurfaceActions(
+  value: unknown,
+): value is { label: string; value: string }[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (action) =>
+        isRecord(action) &&
+        typeof action.label === "string" &&
+        typeof action.value === "string",
+    )
   );
 }

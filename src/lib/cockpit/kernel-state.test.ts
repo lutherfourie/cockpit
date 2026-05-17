@@ -17,6 +17,44 @@ describe("cockpit kernel state", () => {
     expect(state.generatedSurface.status).toBe("empty");
   });
 
+  it("falls back to the full initial state when a persisted field is invalid", () => {
+    const state = parseKernelState(
+      JSON.stringify({
+        output: {
+          currentGoal: "Keep this only if the whole persisted state is valid.",
+          nextAction: "Continue.",
+          proofNeeded: "A passing test.",
+          parkingLot: ["persisted"],
+          assumptions: [],
+          blockers: [],
+        },
+        mode: "invalid-mode",
+        theme: "light",
+      }),
+    );
+
+    expect(state.output.currentGoal).toContain("Capture the next development move");
+    expect(state.output.parkingLot).toEqual([]);
+    expect(state.mode).toBe("focus");
+    expect(state.theme).toBe("dim");
+  });
+
+  it("rejects malformed generated surface actions in persisted state", () => {
+    const state = parseKernelState(
+      JSON.stringify({
+        generatedSurface: {
+          status: "ready",
+          kind: "assistant_note",
+          title: "Prompt Mentor",
+          body: "Ask for proof before broad refactors.",
+          actions: [{ label: "Use it", value: 42 }],
+        },
+      }),
+    );
+
+    expect(state.generatedSurface.status).toBe("empty");
+  });
+
   it("adds parking items without growing beyond the cockpit limit", () => {
     let state = createInitialKernelState();
 
@@ -31,7 +69,8 @@ describe("cockpit kernel state", () => {
     const text = promoteThoughtMessage({
       id: "message-1",
       role: "assistant",
-      content: "You seem to be trying to decide whether OpenUI owns core state.",
+      content:
+        "  You seem to be trying\n\n  to decide whether   OpenUI owns core state.  ",
       createdAt: "2026-05-17T00:00:00.000Z",
     });
 
