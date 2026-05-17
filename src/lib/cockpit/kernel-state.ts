@@ -1,5 +1,6 @@
 import {
   COCKPIT_MODES,
+  CockpitAgentOutputSchema,
   type CockpitAgentOutput,
   type CockpitMode,
 } from "./schema";
@@ -58,7 +59,7 @@ const INITIAL_OUTPUT: CockpitAgentOutput = {
 
 export function createInitialKernelState(): CockpitKernelState {
   return {
-    output: INITIAL_OUTPUT,
+    output: createInitialOutput(),
     mode: "focus",
     theme: "dim",
     generatedSurface: { status: "empty" },
@@ -83,10 +84,15 @@ export function parseKernelState(rawState: string | null): CockpitKernelState {
       return initial;
     }
 
+    const generatedSurface =
+      "generatedSurface" in parsed
+        ? parseGeneratedSurface(parsed.generatedSurface)
+        : undefined;
+
     return {
       output:
-        "output" in parsed && isCockpitOutput(parsed.output)
-          ? parsed.output
+        "output" in parsed
+          ? parseCockpitOutput(parsed.output) ?? initial.output
           : initial.output,
       sessionId:
         typeof parsed.sessionId === "string" && parsed.sessionId.length > 0
@@ -98,10 +104,7 @@ export function parseKernelState(rawState: string | null): CockpitKernelState {
           : initial.mode,
       theme: "theme" in parsed && isTheme(parsed.theme) ? parsed.theme : initial.theme,
       generatedSurface:
-        "generatedSurface" in parsed &&
-        isGeneratedSurface(parsed.generatedSurface)
-          ? parsed.generatedSurface
-          : initial.generatedSurface,
+        generatedSurface !== undefined ? generatedSurface : initial.generatedSurface,
       thoughtChat:
         "thoughtChat" in parsed && Array.isArray(parsed.thoughtChat)
           ? parsed.thoughtChat.slice(-20)
@@ -161,12 +164,17 @@ export function promoteThoughtMessage(message: ThoughtChatMessage): string {
   return message.content.replace(/\s+/g, " ").trim();
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function createInitialOutput(): CockpitAgentOutput {
+  return {
+    ...INITIAL_OUTPUT,
+    parkingLot: [...INITIAL_OUTPUT.parkingLot],
+    assumptions: [...INITIAL_OUTPUT.assumptions],
+    blockers: [...INITIAL_OUTPUT.blockers],
+  };
 }
 
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isCockpitMode(value: unknown): value is CockpitMode {
@@ -181,16 +189,12 @@ function isTheme(value: unknown): value is CockpitTheme {
 }
 
 function isCockpitOutput(value: unknown): value is CockpitAgentOutput {
-  return (
-    isRecord(value) &&
-    typeof value.currentGoal === "string" &&
-    typeof value.nextAction === "string" &&
-    typeof value.proofNeeded === "string" &&
-    isStringArray(value.parkingLot) &&
-    isStringArray(value.assumptions) &&
-    isStringArray(value.blockers) &&
-    (value.handoff === undefined || typeof value.handoff === "string")
-  );
+  return parseCockpitOutput(value) !== undefined;
+}
+
+function parseCockpitOutput(value: unknown): CockpitAgentOutput | undefined {
+  const parsed = CockpitAgentOutputSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function isValidPersistedKernelState(
@@ -203,7 +207,7 @@ function isValidPersistedKernelState(
     (!("mode" in value) || isCockpitMode(value.mode)) &&
     (!("theme" in value) || isTheme(value.theme)) &&
     (!("generatedSurface" in value) ||
-      isGeneratedSurface(value.generatedSurface)) &&
+      parseGeneratedSurface(value.generatedSurface) !== undefined) &&
     (!("thoughtChat" in value) ||
       (Array.isArray(value.thoughtChat) &&
         value.thoughtChat.every(isThoughtChatMessage)))
@@ -220,20 +224,22 @@ function isThoughtChatMessage(value: unknown): value is ThoughtChatMessage {
   );
 }
 
-function isGeneratedSurface(value: unknown): value is GeneratedSurface {
+function parseGeneratedSurface(value: unknown): GeneratedSurface | undefined {
   if (!isRecord(value)) {
-    return false;
+    return undefined;
   }
 
   if (value.status === "empty") {
-    return true;
+    return { status: "empty" };
   }
 
   if (value.status === "unavailable") {
-    return typeof value.reason === "string";
+    return typeof value.reason === "string"
+      ? { status: "unavailable", reason: value.reason }
+      : undefined;
   }
 
-  return (
+  if (
     value.status === "ready" &&
     (value.kind === "assistant_note" ||
       value.kind === "prompt_mentor" ||
@@ -241,7 +247,17 @@ function isGeneratedSurface(value: unknown): value is GeneratedSurface {
     typeof value.title === "string" &&
     typeof value.body === "string" &&
     (value.actions === undefined || isGeneratedSurfaceActions(value.actions))
-  );
+  ) {
+    return {
+      status: "ready",
+      kind: value.kind,
+      title: value.title,
+      body: value.body,
+      ...(value.actions === undefined ? {} : { actions: value.actions }),
+    };
+  }
+
+  return undefined;
 }
 
 function isGeneratedSurfaceActions(
