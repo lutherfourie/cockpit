@@ -34,10 +34,24 @@ export const CockpitAgentOutputSchema = z.object({
   blockers: z.array(z.string().trim().min(1)).default([]),
 });
 
+export const CockpitPersistenceSchema = z.object({
+  saved: z.boolean(),
+  source: z.enum(["supabase", "local", "none"]),
+  reason: z.string().optional(),
+});
+
+export const CockpitTurnResultSchema = z.object({
+  output: CockpitAgentOutputSchema,
+  sessionId: z.string().uuid().optional(),
+  persistence: CockpitPersistenceSchema,
+});
+
 export type CockpitMode = z.infer<typeof CockpitModeSchema>;
 export type CockpitProvider = z.infer<typeof CockpitProviderSchema>;
 export type AgentInput = z.infer<typeof AgentInputSchema>;
 export type CockpitAgentOutput = z.infer<typeof CockpitAgentOutputSchema>;
+export type CockpitPersistence = z.infer<typeof CockpitPersistenceSchema>;
+export type CockpitTurnResult = z.infer<typeof CockpitTurnResultSchema>;
 
 const MAX_LIST_ITEMS = 5;
 

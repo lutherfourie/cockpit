@@ -9,13 +9,15 @@ describe("cockpit agent", () => {
     vi.stubEnv("OPENAI_API_KEY", "");
     const store = createMockStore();
 
-    const output = await runCockpitAgent(
+    const result = await runCockpitAgent(
       { message: "I need to fix tests but also rethink auth", mode: "focus" },
       { store },
     );
 
-    expect(output.currentGoal).toContain("I need to fix tests");
-    expect(output.nextAction).toContain("smallest concrete step");
+    expect(result.output.currentGoal).toContain("I need to fix tests");
+    expect(result.output.nextAction).toContain("smallest concrete step");
+    expect(result.persistence.saved).toBe(true);
+    expect(result.persistence.source).toBe("supabase");
     expect(store.saveSessionState).toHaveBeenCalledOnce();
   });
 
@@ -23,7 +25,7 @@ describe("cockpit agent", () => {
     vi.stubEnv("COCKPIT_LLM_PROVIDER", "codex");
     const store = createMockStore();
 
-    const output = await runCockpitAgent(
+    const result = await runCockpitAgent(
       { message: "make this use Codex", mode: "focus" },
       {
         store,
@@ -45,8 +47,8 @@ describe("cockpit agent", () => {
       },
     );
 
-    expect(output.currentGoal).toBe("Use Codex subscription locally");
-    expect(output.nextAction).toBe("Shell out through codex exec");
+    expect(result.output.currentGoal).toBe("Use Codex subscription locally");
+    expect(result.output.nextAction).toBe("Shell out through codex exec");
     expect(store.loadSessionState).toHaveBeenCalledOnce();
     expect(store.saveSessionState).toHaveBeenCalledOnce();
   });
@@ -56,13 +58,13 @@ describe("cockpit agent", () => {
     vi.stubEnv("CEREBRAS_API_KEY", "");
     const store = createMockStore();
 
-    const output = await runCockpitAgent(
+    const result = await runCockpitAgent(
       { message: "use Cerebras for now", mode: "focus" },
       { store },
     );
 
-    expect(output.blockers).toEqual(["CEREBRAS_API_KEY is not set."]);
-    expect(output.nextAction).toContain("smallest concrete step");
+    expect(result.output.blockers).toEqual(["CEREBRAS_API_KEY is not set."]);
+    expect(result.output.nextAction).toContain("smallest concrete step");
     expect(store.saveSessionState).toHaveBeenCalledOnce();
   });
 });
@@ -70,7 +72,10 @@ describe("cockpit agent", () => {
 function createMockStore(): CockpitMemoryStore {
   return {
     loadSessionState: vi.fn(async () => null),
-    saveSessionState: vi.fn(async () => ({ saved: true })),
+    saveSessionState: vi.fn(async () => ({
+      sessionId: "00000000-0000-4000-8000-000000000000",
+      saved: true,
+    })),
     addParkingLotItem: vi.fn(async () => ({ saved: true })),
     createHandoff: vi.fn(async () => ({ saved: true })),
   };

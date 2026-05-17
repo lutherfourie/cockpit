@@ -28,9 +28,9 @@ export async function POST(request: Request) {
   }
 
   const store = await createStore();
-  const output = await runCockpitAgent(parsed.data, { store });
+  const result = await runCockpitAgent(parsed.data, { store });
 
-  return NextResponse.json({ output });
+  return NextResponse.json(result);
 }
 
 async function createStore() {

@@ -16,6 +16,7 @@ import {
   normalizeCockpitOutput,
   parseCockpitOutput,
   type CockpitAgentOutput,
+  type CockpitTurnResult,
 } from "./schema";
 import {
   runCodexExecCockpit,
@@ -62,7 +63,7 @@ Return only a JSON object with this exact shape:
 export async function runCockpitAgent(
   rawInput: unknown,
   options: RunCockpitAgentOptions = {},
-): Promise<CockpitAgentOutput> {
+): Promise<CockpitTurnResult> {
   const input = AgentInputSchema.parse(rawInput);
   const store = options.store ?? new NullCockpitMemoryStore();
   const repoState = await summarizeRepoState(options.cwd);
@@ -80,12 +81,16 @@ export async function runCockpitAgent(
           runner: options.codexRunner,
         },
       });
-      await store.saveSessionState({
+      const saveResult = await store.saveSessionState({
         sessionId: input.sessionId,
         message: input.message,
         output,
       });
-      return output;
+      return {
+        output,
+        sessionId: saveResult.sessionId ?? input.sessionId,
+        persistence: createPersistenceResult(saveResult),
+      };
     } catch (error) {
       return saveFallback({
         store,
@@ -161,7 +166,7 @@ async function runSdkCockpitAgent({
   model?: Model;
   structuredOutput: boolean;
   failurePrefix: string;
-}): Promise<CockpitAgentOutput> {
+}): Promise<CockpitTurnResult> {
   const agent = structuredOutput
     ? new Agent({
         name: "Cockpit Coordinator",
@@ -199,12 +204,16 @@ async function runSdkCockpitAgent({
     );
 
     const output = parseCockpitOutput(result.finalOutput);
-    await store.saveSessionState({
+    const saveResult = await store.saveSessionState({
       sessionId: input.sessionId,
       message: input.message,
       output,
     });
-    return output;
+    return {
+      output,
+      sessionId: saveResult.sessionId ?? input.sessionId,
+      persistence: createPersistenceResult(saveResult),
+    };
   } catch (error) {
     return saveFallback({
       store,
@@ -299,18 +308,32 @@ async function saveFallback({
   store: CockpitMemoryStore;
   input: ReturnType<typeof AgentInputSchema.parse>;
   reason: string;
-}): Promise<CockpitAgentOutput> {
+}): Promise<CockpitTurnResult> {
   const fallback = createFallbackCockpitOutput({
     message: input.message,
     mode: input.mode,
     reason,
   });
-  await store.saveSessionState({
+  const saveResult = await store.saveSessionState({
     sessionId: input.sessionId,
     message: input.message,
     output: fallback,
   });
-  return fallback;
+  return {
+    output: fallback,
+    sessionId: saveResult.sessionId ?? input.sessionId,
+    persistence: createPersistenceResult(saveResult),
+  };
+}
+
+function createPersistenceResult(
+  saveResult: Awaited<ReturnType<CockpitMemoryStore["saveSessionState"]>>,
+): CockpitTurnResult["persistence"] {
+  return {
+    saved: saveResult.saved,
+    source: saveResult.saved ? "supabase" : "none",
+    reason: saveResult.reason,
+  };
 }
 
 function readProvider() {

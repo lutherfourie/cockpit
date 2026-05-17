@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AgentInputSchema,
   CockpitProviderSchema,
+  CockpitTurnResultSchema,
   createFallbackCockpitOutput,
   parseCockpitOutput,
 } from "./schema";
@@ -18,6 +19,23 @@ describe("cockpit schema", () => {
     expect(CockpitProviderSchema.parse("openai")).toBe("openai");
     expect(CockpitProviderSchema.parse("codex")).toBe("codex");
     expect(CockpitProviderSchema.parse("cerebras")).toBe("cerebras");
+  });
+
+  it("parses a cockpit turn result with persistence status", () => {
+    const parsed = CockpitTurnResultSchema.parse({
+      output: {
+        currentGoal: "Keep Cockpit useful without models",
+        nextAction: "Return a typed turn result",
+        proofNeeded: "Route response includes output and persistence",
+        parkingLot: [],
+        assumptions: [],
+        blockers: [],
+      },
+      sessionId: "00000000-0000-4000-8000-000000000000",
+      persistence: { saved: true, source: "supabase" },
+    });
+
+    expect(parsed.persistence.source).toBe("supabase");
   });
 
   it("parses and normalizes structured output", () => {
