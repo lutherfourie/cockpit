@@ -239,10 +239,15 @@ export function CockpitApp() {
     return sessionId ? "Session active" : "Local session";
   }, [error, isSubmitting, sessionId]);
 
-  const memoryStatus =
-    persistence.saved && persistence.source === "supabase"
-      ? "Memory linked"
-      : "Local saved";
+  const memoryStatus = (() => {
+    if (persistence.source === "supabase" && persistence.saved) {
+      return "Memory linked";
+    }
+    if (persistence.source === "local") {
+      return "Local cache";
+    }
+    return "Not synced";
+  })();
 
   function updateCockpitState(
     updater: (current: PersistedCockpitState) => PersistedCockpitState,
