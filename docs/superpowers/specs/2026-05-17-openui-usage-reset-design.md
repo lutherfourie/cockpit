@@ -19,7 +19,7 @@ The design direction is a hybrid cockpit kernel:
 - Design for future assistants and Pulse-like background work as part of the layout from the start.
 - Make database persistence a near-term priority so the user can continue Cockpit sessions from a phone while desktop development agents keep working.
 - Add a bounded thought-forming chat surface early, because the user often needs an LLM to help put an unclear mental state into words before Cockpit can compress it into action.
-- Keep Deep Agents-style harnesses in the periphery as experimental assistant infrastructure, not as a dependency of the cockpit kernel. The architecture should leave room for evaluating LangChain Deep Agents or a future custom deep-agent harness.
+- Keep graph/deep-agent-style harnesses in the periphery as experimental assistant infrastructure, not as a dependency of the cockpit kernel. The preferred peripheral starting point is LangGraph because it is the lower-level orchestration runtime; Deep Agents can be studied later as a higher-level harness on top of that style of runtime, or replaced by a future custom Cockpit-shaped harness.
 
 ## Non-Goals
 
@@ -46,7 +46,7 @@ The assistant layer can fail without breaking the cockpit. Provider errors, toke
 
 The first assistant-facing interaction should include a bounded chat lane for thought formation. Its job is to help the user say the thing clearly enough to act on, not to become an infinite conversation sink. The chat lane should make it easy to promote a message, summary, or assistant rewrite into the kernel as the next cockpit turn.
 
-Deep Agents-style runtimes belong behind this layer as peripheral experiments. They may power future background work, experiments, or tool-heavy assistant jobs, but they should communicate with the kernel through typed envelopes rather than owning session state directly.
+LangGraph and Deep Agents-style runtimes belong behind this layer as peripheral experiments. They may power future background work, experiments, or tool-heavy assistant jobs, but they should communicate with the kernel through typed envelopes rather than owning session state directly. Start with LangGraph for the peripheral lane because it keeps the orchestration primitive explicit and leaves room to build a custom Cockpit harness later.
 
 ### OpenUI Zones
 
@@ -77,7 +77,7 @@ Every turn follows this order:
 3. If an assistant provider is available, the assistant may enrich the typed result.
 4. If the turn benefits from generated UI, the assistant may emit an OpenUI artifact for an approved zone.
 5. The durable state remains typed JSON and is validated before persistence.
-6. Peripheral agent harnesses, including Deep Agents or a future custom harness, can submit proposed updates through the same typed kernel validation path.
+6. Peripheral agent harnesses, starting with LangGraph and later including Deep Agents or a future custom harness if warranted, can submit proposed updates through the same typed kernel validation path.
 
 This means the no-model path is not a degraded error path. It is a supported operating mode.
 
@@ -142,7 +142,7 @@ The implementation should add or preserve coverage for:
 5. Add Supabase-authenticated persistence for active session, parking lot, and near-term chat continuity.
 6. Add provider-failure, malformed-OpenUI, and chat-promotion tests.
 7. After Supabase persistence and the first OpenUI zone are stable, add the right-side background work lane for Pulse-like async assistant activity.
-8. Add a peripheral experiment for Deep Agents-style orchestration and compare it against a minimal custom harness before adopting either as core infrastructure.
+8. Add a peripheral LangGraph experiment for graph-style orchestration. Use it to learn the right boundaries before evaluating Deep Agents or a minimal custom harness.
 
 ## Open Questions
 
@@ -150,4 +150,4 @@ The implementation should add or preserve coverage for:
 - Should phone use start with anonymous/local auth, magic-link auth, or a single-user dev login?
 - How much OpenUI artifact history should be retained after Supabase sync exists?
 - Should the first thought-forming chat appear as an expandable input-dock panel, a right-lane assistant thread, or a modal that converts directly into a cockpit turn?
-- Should the first Deep Agents peripheral experiment use LangChain Deep Agents directly, or should it prototype a small custom harness shaped around Cockpit's kernel/action-envelope model?
+- What is the smallest LangGraph peripheral experiment that proves value without pulling orchestration into the cockpit kernel?

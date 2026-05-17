@@ -12,7 +12,7 @@
 
 ## Scope Check
 
-The approved spec includes a future Pulse-like right lane and peripheral Deep Agents-style orchestration. This plan does not implement the background work lane or adopt Deep Agents as a runtime dependency. It reserves those directions through typed kernel boundaries, generated-surface isolation, and persistence shape, then stops after the first usable slice: kernel boundary reset, thought-forming chat, OpenUI generated slot, and Supabase session/parking/chat persistence.
+The approved spec includes a future Pulse-like right lane and peripheral graph/deep-agent-style orchestration. This plan does not implement the background work lane or adopt LangGraph or Deep Agents as a runtime dependency. It reserves those directions through typed kernel boundaries, generated-surface isolation, and persistence shape, then stops after the first usable slice: kernel boundary reset, thought-forming chat, OpenUI generated slot, and Supabase session/parking/chat persistence.
 
 ## File Structure
 
@@ -40,7 +40,7 @@ The approved spec includes a future Pulse-like right lane and peripheral Deep Ag
 - Modify `src/lib/cockpit/storage.ts`: add chat persistence methods and parking/session load helpers.
 - Modify `src/lib/cockpit/supabase-rls.test.ts`: cover the new chat table and no service-role browser usage.
 - Modify `tests/e2e/cockpit.spec.ts`: cover no-model operation, chat promotion, local reload persistence, and stable panels.
-- Leave `experiments/deep-agents-runner` unimplemented in this first slice. Add it in a later plan as a peripheral comparison between LangChain Deep Agents and a small custom Cockpit-shaped harness.
+- Leave `experiments/langgraph-runner` unimplemented in this first slice. Add it in a later plan as the first peripheral orchestration experiment. Evaluate Deep Agents only after the LangGraph boundary proves useful, because Deep Agents is a higher-level harness and the user may eventually build a custom Cockpit-shaped harness.
 
 ## Task 1: Repo Hygiene And Kernel State
 
@@ -1738,6 +1738,6 @@ git commit -m "docs: document cockpit kernel operating model"
 
 ## Self-Review Notes
 
-- Spec coverage: This plan covers the kernel boundary, OpenUI zone isolation, thought-forming chat, Supabase Auth and chat persistence, and verification. It intentionally excludes the future Pulse-like background work lane and peripheral Deep Agents experiment.
+- Spec coverage: This plan covers the kernel boundary, OpenUI zone isolation, thought-forming chat, Supabase Auth and chat persistence, and verification. It intentionally excludes the future Pulse-like background work lane and peripheral LangGraph experiment.
 - Red-flag scan: The plan gives concrete file paths, commands, and code snippets for each implementation task.
 - Type consistency: `CockpitKernelState`, `GeneratedSurface`, `ThoughtChatMessage`, and `CockpitTurnResult` are introduced before later tasks reference them.
