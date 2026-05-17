@@ -116,8 +116,11 @@ function CockpitPanel({
       {items ? (
         listItems.length > 0 ? (
           <ul className="space-y-2 text-sm leading-6">
-            {listItems.map((item) => (
-              <li key={item} className="cockpit-list-item border-l-2 pl-3">
+            {listItems.map((item, index) => (
+              <li
+                key={`${index}-${item}`}
+                className="cockpit-list-item border-l-2 pl-3"
+              >
                 {item}
               </li>
             ))}
