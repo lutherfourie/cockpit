@@ -18,13 +18,14 @@ The design direction is a hybrid cockpit kernel:
 - Use OpenUI only when it helps the intent of a block, such as experiment setup, prompt mentoring, review exploration, generated dashboards, or tool-result inspection.
 - Design for future assistants and Pulse-like background work as part of the layout from the start.
 - Make database persistence a near-term priority so the user can continue Cockpit sessions from a phone while desktop development agents keep working.
+- Add a bounded thought-forming chat surface early, because the user often needs an LLM to help put an unclear mental state into words before Cockpit can compress it into action.
 
 ## Non-Goals
 
 - Do not make OpenUI the durable source of cockpit truth.
 - Do not let model-generated UI rearrange the core cockpit panels.
 - Do not require an LLM for basic focus, parking, proof tracking, or handoff drafting.
-- Do not implement a broad chat/runtime takeover in the first slice.
+- Do not implement a broad unbounded chat/runtime takeover in the first slice. The first chat feature should be a focused thought-forming surface that feeds the cockpit state.
 
 ## Architecture
 
@@ -42,6 +43,8 @@ The assistant layer is optional. When a provider is available, it can improve th
 
 The assistant layer can fail without breaking the cockpit. Provider errors, token exhaustion, malformed model output, and timeouts fall back to kernel output with a visible but non-blocking status.
 
+The first assistant-facing interaction should include a bounded chat lane for thought formation. Its job is to help the user say the thing clearly enough to act on, not to become an infinite conversation sink. The chat lane should make it easy to promote a message, summary, or assistant rewrite into the kernel as the next cockpit turn.
+
 ### OpenUI Zones
 
 OpenUI zones are bounded render areas for generated UI. They are not the core panels and do not directly own durable state. An OpenUI artifact is a renderable assistant artifact attached to a turn or workspace.
@@ -52,6 +55,7 @@ OpenUI is appropriate for:
 - prompt mentor panels,
 - review or repo-state explorers,
 - tool-result dashboards,
+- thought-forming chat aids when a generated interaction helps the user express the next move,
 - focused generated controls where layout composition matters.
 
 OpenUI is not appropriate for:
@@ -94,7 +98,7 @@ The current layout direction is provisional until usage proves better alternativ
 - Center primary region: stable cockpit panels owned by the kernel.
 - Center secondary region: OpenUI generated focus surface, shown only when useful.
 - Right lane: future Pulse-like assistant work queue with completed summaries, proof links, pending check-ins, and async activity.
-- Bottom input dock: keyboard-first capture, mode selector, park control, and submit.
+- Bottom input dock: keyboard-first capture, mode selector, park control, submit, and access to the bounded thought-forming chat lane.
 
 The key layout rule is that model creativity cannot move or obscure the core cockpit panels.
 
@@ -107,6 +111,7 @@ Cockpit should fail soft.
 - If OpenUI output is malformed, the OpenUI zone shows an unavailable state and the core panels remain untouched.
 - If Supabase is unavailable, local cache keeps the current device usable and the UI indicates unsynced state.
 - If browser local storage fails, the app remains usable for the current in-memory session.
+- If chat is unavailable because no model is available, the input dock should still provide local prompts or templates that help the user form a cockpit-ready thought.
 
 OpenUI actions should use explicit validated action envelopes. They may request kernel actions, but they should not directly mutate durable state.
 
@@ -118,6 +123,7 @@ The implementation should add or preserve coverage for:
 - provider failure and token exhaustion fallback,
 - malformed OpenUI output,
 - OpenUI zone isolation from stable cockpit panels,
+- thought-forming chat promotion into a normal cockpit turn,
 - local persistence across reload,
 - Supabase owner isolation and no service-role browser usage,
 - cross-device persistence once Supabase sync is added,
@@ -127,13 +133,15 @@ The implementation should add or preserve coverage for:
 
 1. Clarify boundaries in code names and docs: kernel, assistant layer, OpenUI zones, and persistence.
 2. Refactor the current OpenUI wrapper so it is clearly a render artifact adapter, not the source of cockpit state.
-3. Add an explicit generated-surface slot that can render empty, unavailable, or OpenUI content without disturbing the core panels.
-4. Add Supabase-authenticated persistence for active session and parking lot continuity.
-5. Add provider-failure and malformed-OpenUI tests.
-6. After Supabase persistence and the first OpenUI zone are stable, add the right-side background work lane for Pulse-like async assistant activity.
+3. Add a bounded thought-forming chat lane that can help the user phrase messy mental state and promote the result into a normal cockpit turn.
+4. Add an explicit generated-surface slot that can render empty, unavailable, or OpenUI content without disturbing the core panels.
+5. Add Supabase-authenticated persistence for active session, parking lot, and near-term chat continuity.
+6. Add provider-failure, malformed-OpenUI, and chat-promotion tests.
+7. After Supabase persistence and the first OpenUI zone are stable, add the right-side background work lane for Pulse-like async assistant activity.
 
 ## Open Questions
 
 - Which generated surfaces should be first: experiments, prompt mentor, review explorer, or repo dashboard?
 - Should phone use start with anonymous/local auth, magic-link auth, or a single-user dev login?
 - How much OpenUI artifact history should be retained after Supabase sync exists?
+- Should the first thought-forming chat appear as an expandable input-dock panel, a right-lane assistant thread, or a modal that converts directly into a cockpit turn?
