@@ -20,6 +20,8 @@ import {
   COCKPIT_MODES,
   type CockpitAgentOutput,
   type CockpitMode,
+  type CockpitPersistence,
+  type CockpitTurnResult,
 } from "@/lib/cockpit/schema";
 import { CockpitOpenUiRenderer } from "@/lib/openui/cockpit-library";
 
@@ -31,6 +33,11 @@ const INITIAL_OUTPUT: CockpitAgentOutput = {
   parkingLot: [],
   assumptions: ["No assistant turn has run yet."],
   blockers: [],
+};
+
+const INITIAL_PERSISTENCE: CockpitPersistence = {
+  saved: false,
+  source: "local",
 };
 
 const MODE_LABELS: Record<CockpitMode, string> = {
@@ -51,12 +58,14 @@ const COCKPIT_THEME_VALUES = ["dim", "light"] as const;
 type PersistedCockpitState = {
   output: CockpitAgentOutput;
   sessionId?: string;
+  persistence: CockpitPersistence;
   mode: CockpitMode;
   theme: CockpitTheme;
 };
 
 const DEFAULT_COCKPIT_STATE: PersistedCockpitState = {
   output: INITIAL_OUTPUT,
+  persistence: INITIAL_PERSISTENCE,
   mode: "focus",
   theme: "dim",
 };
@@ -101,6 +110,19 @@ function isCockpitAgentOutput(value: unknown): value is CockpitAgentOutput {
   );
 }
 
+function isCockpitPersistence(value: unknown): value is CockpitPersistence {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.saved === "boolean" &&
+    typeof value.source === "string" &&
+    ["supabase", "local", "none"].includes(value.source) &&
+    (value.reason === undefined || typeof value.reason === "string")
+  );
+}
+
 function parsePersistedCockpitState(
   rawState: string | null,
 ): PersistedCockpitState {
@@ -125,6 +147,9 @@ function parsePersistedCockpitState(
       mode: isCockpitMode(parsedState.mode)
         ? parsedState.mode
         : DEFAULT_COCKPIT_STATE.mode,
+      persistence: isCockpitPersistence(parsedState.persistence)
+        ? parsedState.persistence
+        : DEFAULT_COCKPIT_STATE.persistence,
       theme: isCockpitTheme(parsedState.theme)
         ? parsedState.theme
         : DEFAULT_COCKPIT_STATE.theme,
@@ -198,7 +223,7 @@ export function CockpitApp() {
     () => parsePersistedCockpitState(persistedStateRaw),
     [persistedStateRaw],
   );
-  const { mode, theme, output, sessionId } = cockpitState;
+  const { mode, theme, output, sessionId, persistence } = cockpitState;
   const [message, setMessage] = useState("");
   const [parkingDraft, setParkingDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +239,10 @@ export function CockpitApp() {
     return sessionId ? "Session active" : "Local session";
   }, [error, isSubmitting, sessionId]);
 
-  const memoryStatus = sessionId ? "Memory linked" : "Local saved";
+  const memoryStatus =
+    persistence.saved && persistence.source === "supabase"
+      ? "Memory linked"
+      : "Local saved";
 
   function updateCockpitState(
     updater: (current: PersistedCockpitState) => PersistedCockpitState,
@@ -241,9 +269,7 @@ export function CockpitApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: trimmed, mode, sessionId }),
       });
-      const payload = (await response.json()) as {
-        output?: CockpitAgentOutput;
-        sessionId?: string;
+      const payload = (await response.json()) as Partial<CockpitTurnResult> & {
         error?: string;
       };
 
@@ -257,6 +283,7 @@ export function CockpitApp() {
         ...current,
         output: nextOutput,
         sessionId: payload.sessionId ?? current.sessionId,
+        persistence: payload.persistence ?? current.persistence,
       }));
       setMessage("");
     } catch (requestError) {

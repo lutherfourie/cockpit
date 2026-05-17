@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { runCockpitAgent } from "./agent";
-import type { CockpitMemoryStore } from "./storage";
+import { buildCockpitTools, buildSdkCockpitTools, runCockpitAgent } from "./agent";
+import { NullCockpitMemoryStore, type CockpitMemoryStore } from "./storage";
 
 describe("cockpit agent", () => {
   it("uses deterministic fallback when OPENAI_API_KEY is absent", async () => {
@@ -19,6 +19,21 @@ describe("cockpit agent", () => {
     expect(result.persistence.saved).toBe(true);
     expect(result.persistence.source).toBe("supabase");
     expect(store.saveSessionState).toHaveBeenCalledOnce();
+  });
+
+  it("reports unsaved local fallback persistence from the memory store", async () => {
+    vi.stubEnv("COCKPIT_LLM_PROVIDER", "local");
+    vi.stubEnv("OPENAI_API_KEY", "");
+    const store = new NullCockpitMemoryStore("test reason");
+
+    const result = await runCockpitAgent(
+      { message: "keep moving without persistence", mode: "focus" },
+      { store },
+    );
+
+    expect(result.persistence.saved).toBe(false);
+    expect(result.persistence.source).toBe("none");
+    expect(result.persistence.reason).toBe("test reason");
   });
 
   it("uses codex exec provider when configured", async () => {
@@ -73,6 +88,25 @@ describe("cockpit agent", () => {
     expect(result.persistence.source).toBe("supabase");
     expect(store.saveSessionState).toHaveBeenCalledOnce();
   });
+
+  it("excludes session save from SDK runtime tools while preserving other tools", () => {
+    const store = createMockStore();
+
+    expect(getToolNames(buildCockpitTools(store))).toEqual([
+      "load_session_state",
+      "save_session_state",
+      "add_parking_lot_item",
+      "create_handoff",
+      "summarize_repo_state",
+    ]);
+
+    expect(getToolNames(buildSdkCockpitTools(store))).toEqual([
+      "load_session_state",
+      "add_parking_lot_item",
+      "create_handoff",
+      "summarize_repo_state",
+    ]);
+  });
 });
 
 function createMockStore(): CockpitMemoryStore {
@@ -85,4 +119,10 @@ function createMockStore(): CockpitMemoryStore {
     addParkingLotItem: vi.fn(async () => ({ saved: true })),
     createHandoff: vi.fn(async () => ({ saved: true })),
   };
+}
+
+function getToolNames(tools: ReturnType<typeof buildCockpitTools>): string[] {
+  return tools.flatMap((cockpitTool) =>
+    cockpitTool.type === "function" ? [cockpitTool.name] : [],
+  );
 }

@@ -15,7 +15,6 @@ import {
   createFallbackCockpitOutput,
   normalizeCockpitOutput,
   parseCockpitOutput,
-  type CockpitAgentOutput,
   type CockpitTurnResult,
 } from "./schema";
 import {
@@ -29,6 +28,10 @@ export type RunCockpitAgentOptions = {
   store?: CockpitMemoryStore;
   cwd?: string;
   codexRunner?: CodexExecRunner;
+};
+
+type BuildCockpitToolsOptions = {
+  includeSessionSaveTool?: boolean;
 };
 
 const COCKPIT_INSTRUCTIONS = `
@@ -172,13 +175,13 @@ async function runSdkCockpitAgent({
         name: "Cockpit Coordinator",
         instructions: COCKPIT_INSTRUCTIONS,
         outputType: CockpitAgentOutputSchema,
-        tools: buildCockpitTools(store, cwd),
+        tools: buildSdkCockpitTools(store, cwd),
         ...(model ? { model } : {}),
       })
     : new Agent({
         name: "Cockpit Coordinator",
         instructions: COCKPIT_JSON_INSTRUCTIONS,
-        tools: buildCockpitTools(store, cwd),
+        tools: buildSdkCockpitTools(store, cwd),
         ...(model ? { model } : {}),
       });
 
@@ -226,8 +229,9 @@ async function runSdkCockpitAgent({
 export function buildCockpitTools(
   store: CockpitMemoryStore,
   cwd = process.cwd(),
+  options: BuildCockpitToolsOptions = {},
 ): Tool[] {
-  return [
+  const tools: Tool[] = [
     tool({
       name: "load_session_state",
       description: "Load persisted cockpit state for the active session.",
@@ -235,22 +239,6 @@ export function buildCockpitTools(
         sessionId: z.string().uuid().optional(),
       }),
       execute: async ({ sessionId }) => store.loadSessionState(sessionId),
-    }),
-    tool({
-      name: "save_session_state",
-      description:
-        "Persist the structured cockpit state for the authenticated user.",
-      parameters: z.object({
-        sessionId: z.string().uuid().optional(),
-        message: z.string(),
-        output: CockpitAgentOutputSchema,
-      }),
-      execute: async ({ sessionId, message, output }) =>
-        store.saveSessionState({
-          sessionId,
-          message,
-          output: normalizeCockpitOutput(output),
-        }),
     }),
     tool({
       name: "add_parking_lot_item",
@@ -284,6 +272,38 @@ export function buildCockpitTools(
       execute: async () => summarizeRepoState(cwd),
     }),
   ];
+
+  if (options.includeSessionSaveTool ?? true) {
+    tools.splice(
+      1,
+      0,
+      tool({
+        name: "save_session_state",
+        description:
+          "Persist the structured cockpit state for the authenticated user.",
+        parameters: z.object({
+          sessionId: z.string().uuid().optional(),
+          message: z.string(),
+          output: CockpitAgentOutputSchema,
+        }),
+        execute: async ({ sessionId, message, output }) =>
+          store.saveSessionState({
+            sessionId,
+            message,
+            output: normalizeCockpitOutput(output),
+          }),
+      }),
+    );
+  }
+
+  return tools;
+}
+
+export function buildSdkCockpitTools(
+  store: CockpitMemoryStore,
+  cwd = process.cwd(),
+): Tool[] {
+  return buildCockpitTools(store, cwd, { includeSessionSaveTool: false });
 }
 
 function formatError(error: unknown): string {
