@@ -49,6 +49,9 @@ describe("cockpit agent", () => {
 
     expect(result.output.currentGoal).toBe("Use Codex subscription locally");
     expect(result.output.nextAction).toBe("Shell out through codex exec");
+    expect(result.sessionId).toBe("00000000-0000-4000-8000-000000000000");
+    expect(result.persistence.saved).toBe(true);
+    expect(result.persistence.source).toBe("supabase");
     expect(store.loadSessionState).toHaveBeenCalledOnce();
     expect(store.saveSessionState).toHaveBeenCalledOnce();
   });
@@ -65,6 +68,9 @@ describe("cockpit agent", () => {
 
     expect(result.output.blockers).toEqual(["CEREBRAS_API_KEY is not set."]);
     expect(result.output.nextAction).toContain("smallest concrete step");
+    expect(result.sessionId).toBe("00000000-0000-4000-8000-000000000000");
+    expect(result.persistence.saved).toBe(true);
+    expect(result.persistence.source).toBe("supabase");
     expect(store.saveSessionState).toHaveBeenCalledOnce();
   });
 });
