@@ -68,7 +68,7 @@ export function ThoughtChatLane({
   }
 
   return (
-    <section className="cockpit-surface border-t px-4 py-3">
+    <section data-testid="thought-chat" className="cockpit-surface border-t px-4 py-3">
       <button
         type="button"
         aria-expanded={isOpen}

@@ -8,6 +8,10 @@ test("cockpit compresses a scattered thought", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Current Goal" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Next Action" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Proof Needed" })).toBeVisible();
+  await expect(page.getByTestId("thought-chat")).toBeVisible();
+  await expect(page.getByTestId("generated-surface")).toContainText(
+    "No generated surface for this turn.",
+  );
 
   await page.getByRole("button", { name: "Thought Chat" }).click();
   await page

@@ -31,6 +31,14 @@ Copy `.env.example` into your local environment and provide:
 
 The Codex provider runs server-side with `--ephemeral`, `--sandbox read-only`, and a JSON output schema. If no provider is set and `OPENAI_API_KEY` is absent, the route uses the deterministic local fallback so the UI and tests still work. If Supabase is not configured or no user is authenticated, memory tools become no-ops instead of using a service role.
 
+## Operating Model
+
+Cockpit has a model-independent kernel. The stable panels, Parking Lot, local cache, and proof tracking work without an LLM. Assistant providers can enrich the result when available.
+
+OpenUI is reserved for approved generated-surface zones. It does not own durable cockpit state.
+
+The thought-forming chat lane helps turn unclear mental state into cockpit-ready input. When no model is available, it uses local phrasing prompts rather than blocking the workflow.
+
 For Cerebras:
 
 ```env
@@ -64,5 +72,6 @@ The migration in `supabase/migrations` creates:
 - `cockpit_sessions`
 - `parking_lot_items`
 - `handoffs`
+- `cockpit_chat_messages`
 
 Every public table has RLS enabled with policies scoped to `user_id = (select auth.uid())`. Browser code uses only the Supabase publishable key.
