@@ -24,6 +24,7 @@ import {
 } from "@/lib/cockpit/schema";
 import { CockpitPanels } from "@/components/cockpit/cockpit-panels";
 import { GeneratedSurfaceSlot } from "@/components/cockpit/generated-surface-slot";
+import { ThoughtChatLane } from "@/components/cockpit/thought-chat-lane";
 import {
   COCKPIT_STATE_STORAGE_KEY,
   createInitialKernelState,
@@ -31,6 +32,7 @@ import {
   reduceKernelState,
   serializeKernelState,
   type CockpitKernelState,
+  type ThoughtChatMessage,
 } from "@/lib/cockpit/kernel-state";
 
 const INITIAL_PERSISTENCE: CockpitPersistence = {
@@ -167,7 +169,7 @@ export function CockpitApp() {
     () => parsePersistedCockpitState(persistedStateRaw),
     [persistedStateRaw],
   );
-  const { mode, theme, output, sessionId, persistence, generatedSurface } =
+  const { mode, theme, output, sessionId, persistence, generatedSurface, thoughtChat } =
     cockpitState;
   const [message, setMessage] = useState("");
   const [parkingDraft, setParkingDraft] = useState("");
@@ -270,6 +272,20 @@ export function CockpitApp() {
       }),
       persistence: current.persistence,
     }));
+  }
+
+  function appendThoughtMessage(thoughtMessage: ThoughtChatMessage) {
+    updateCockpitState((current) => ({
+      ...reduceKernelState(current, {
+        type: "appendThoughtMessage",
+        message: thoughtMessage,
+      }),
+      persistence: current.persistence,
+    }));
+  }
+
+  function promoteThoughtChatText(promoteText: string) {
+    setMessage(promoteText);
   }
 
   return (
@@ -377,6 +393,12 @@ export function CockpitApp() {
               <GeneratedSurfaceSlot surface={generatedSurface} />
             </div>
           </section>
+
+          <ThoughtChatLane
+            messages={thoughtChat}
+            onAppendMessage={appendThoughtMessage}
+            onPromote={promoteThoughtChatText}
+          />
 
           <section className="cockpit-surface border-t px-4 py-3">
             {error ? (
