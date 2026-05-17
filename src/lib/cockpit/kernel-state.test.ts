@@ -115,6 +115,28 @@ describe("cockpit kernel state", () => {
     });
   });
 
+  it("canonicalizes ready generated surface actions", () => {
+    const state = parseKernelState(
+      JSON.stringify({
+        generatedSurface: {
+          status: "ready",
+          kind: "assistant_note",
+          title: "Prompt Mentor",
+          body: "Ask for proof before broad refactors.",
+          actions: [{ label: "Use", value: "use", extra: "drop me" }],
+        },
+      }),
+    );
+
+    expect(state.generatedSurface).toEqual({
+      status: "ready",
+      kind: "assistant_note",
+      title: "Prompt Mentor",
+      body: "Ask for proof before broad refactors.",
+      actions: [{ label: "Use", value: "use" }],
+    });
+  });
+
   it("adds parking items without growing beyond the cockpit limit", () => {
     let state = createInitialKernelState();
 

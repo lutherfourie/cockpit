@@ -253,7 +253,14 @@ function parseGeneratedSurface(value: unknown): GeneratedSurface | undefined {
       kind: value.kind,
       title: value.title,
       body: value.body,
-      ...(value.actions === undefined ? {} : { actions: value.actions }),
+      ...(value.actions === undefined
+        ? {}
+        : {
+            actions: value.actions.map((action) => ({
+              label: action.label,
+              value: action.value,
+            })),
+          }),
     };
   }
 
