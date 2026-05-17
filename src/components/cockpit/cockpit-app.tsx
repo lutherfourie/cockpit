@@ -18,22 +18,20 @@ import {
 
 import {
   COCKPIT_MODES,
-  type CockpitAgentOutput,
   type CockpitMode,
   type CockpitPersistence,
   type CockpitTurnResult,
 } from "@/lib/cockpit/schema";
-import { CockpitOpenUiRenderer } from "@/lib/openui/cockpit-library";
-
-const INITIAL_OUTPUT: CockpitAgentOutput = {
-  currentGoal: "Capture the next development move without expanding the scope.",
-  nextAction: "Paste the messy thought, choose a mode, and ask Cockpit to compress it.",
-  proofNeeded:
-    "The three primary panels update into one coherent, checkable slice.",
-  parkingLot: [],
-  assumptions: ["No assistant turn has run yet."],
-  blockers: [],
-};
+import { CockpitPanels } from "@/components/cockpit/cockpit-panels";
+import { GeneratedSurfaceSlot } from "@/components/cockpit/generated-surface-slot";
+import {
+  COCKPIT_STATE_STORAGE_KEY,
+  createInitialKernelState,
+  parseKernelState,
+  reduceKernelState,
+  serializeKernelState,
+  type CockpitKernelState,
+} from "@/lib/cockpit/kernel-state";
 
 const INITIAL_PERSISTENCE: CockpitPersistence = {
   saved: false,
@@ -49,65 +47,21 @@ const MODE_LABELS: Record<CockpitMode, string> = {
   review: "Review",
 };
 
-type CockpitTheme = "dim" | "light";
-
-const COCKPIT_STATE_STORAGE_KEY = "cockpit:v1:state";
 const COCKPIT_STATE_CHANGED_EVENT = "cockpit:state-changed";
-const COCKPIT_THEME_VALUES = ["dim", "light"] as const;
 
-type PersistedCockpitState = {
-  output: CockpitAgentOutput;
-  sessionId?: string;
+type PersistedCockpitState = CockpitKernelState & {
   persistence: CockpitPersistence;
-  mode: CockpitMode;
-  theme: CockpitTheme;
 };
 
 const DEFAULT_COCKPIT_STATE: PersistedCockpitState = {
-  output: INITIAL_OUTPUT,
+  ...createInitialKernelState(),
   persistence: INITIAL_PERSISTENCE,
-  mode: "focus",
-  theme: "dim",
 };
 
-const DEFAULT_COCKPIT_STATE_RAW = JSON.stringify(DEFAULT_COCKPIT_STATE);
+const DEFAULT_COCKPIT_STATE_RAW = serializeKernelState(DEFAULT_COCKPIT_STATE);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
-function isCockpitMode(value: unknown): value is CockpitMode {
-  return (
-    typeof value === "string" &&
-    (COCKPIT_MODES as readonly string[]).includes(value)
-  );
-}
-
-function isCockpitTheme(value: unknown): value is CockpitTheme {
-  return (
-    typeof value === "string" &&
-    (COCKPIT_THEME_VALUES as readonly string[]).includes(value)
-  );
-}
-
-function isCockpitAgentOutput(value: unknown): value is CockpitAgentOutput {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.currentGoal === "string" &&
-    typeof value.nextAction === "string" &&
-    typeof value.proofNeeded === "string" &&
-    isStringArray(value.parkingLot) &&
-    isStringArray(value.assumptions) &&
-    isStringArray(value.blockers) &&
-    (value.handoff === undefined || typeof value.handoff === "string")
-  );
 }
 
 function isCockpitPersistence(value: unknown): value is CockpitPersistence {
@@ -126,36 +80,26 @@ function isCockpitPersistence(value: unknown): value is CockpitPersistence {
 function parsePersistedCockpitState(
   rawState: string | null,
 ): PersistedCockpitState {
+  const kernelState = parseKernelState(rawState);
+
   try {
     if (!rawState) {
-      return DEFAULT_COCKPIT_STATE;
+      return { ...kernelState, persistence: INITIAL_PERSISTENCE };
     }
 
     const parsedState = JSON.parse(rawState) as unknown;
     if (!isRecord(parsedState)) {
-      return DEFAULT_COCKPIT_STATE;
+      return { ...kernelState, persistence: INITIAL_PERSISTENCE };
     }
 
     return {
-      output: isCockpitAgentOutput(parsedState.output)
-        ? parsedState.output
-        : DEFAULT_COCKPIT_STATE.output,
-      ...(typeof parsedState.sessionId === "string" &&
-      parsedState.sessionId.length > 0
-        ? { sessionId: parsedState.sessionId }
-        : {}),
-      mode: isCockpitMode(parsedState.mode)
-        ? parsedState.mode
-        : DEFAULT_COCKPIT_STATE.mode,
+      ...kernelState,
       persistence: isCockpitPersistence(parsedState.persistence)
         ? parsedState.persistence
-        : DEFAULT_COCKPIT_STATE.persistence,
-      theme: isCockpitTheme(parsedState.theme)
-        ? parsedState.theme
-        : DEFAULT_COCKPIT_STATE.theme,
+        : INITIAL_PERSISTENCE,
     };
   } catch {
-    return DEFAULT_COCKPIT_STATE;
+    return { ...kernelState, persistence: INITIAL_PERSISTENCE };
   }
 }
 
@@ -205,7 +149,7 @@ function writePersistedCockpitState(state: PersistedCockpitState) {
   try {
     window.localStorage.setItem(
       COCKPIT_STATE_STORAGE_KEY,
-      JSON.stringify(state),
+      serializeKernelState(state),
     );
     window.dispatchEvent(new Event(COCKPIT_STATE_CHANGED_EVENT));
   } catch {
@@ -223,7 +167,8 @@ export function CockpitApp() {
     () => parsePersistedCockpitState(persistedStateRaw),
     [persistedStateRaw],
   );
-  const { mode, theme, output, sessionId, persistence } = cockpitState;
+  const { mode, theme, output, sessionId, persistence, generatedSurface } =
+    cockpitState;
   const [message, setMessage] = useState("");
   const [parkingDraft, setParkingDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -285,9 +230,11 @@ export function CockpitApp() {
       }
 
       updateCockpitState((current) => ({
-        ...current,
-        output: nextOutput,
-        sessionId: payload.sessionId ?? current.sessionId,
+        ...reduceKernelState(current, {
+          type: "setOutput",
+          output: nextOutput,
+          sessionId: payload.sessionId,
+        }),
         persistence: payload.persistence ?? current.persistence,
       }));
       setMessage("");
@@ -309,19 +256,19 @@ export function CockpitApp() {
     }
 
     updateCockpitState((current) => ({
-      ...current,
-      output: {
-        ...current.output,
-        parkingLot: [...current.output.parkingLot, trimmed].slice(-5),
-      },
+      ...reduceKernelState(current, { type: "park", content: trimmed }),
+      persistence: current.persistence,
     }));
     setParkingDraft("");
   }
 
   function toggleTheme() {
     updateCockpitState((current) => ({
-      ...current,
-      theme: current.theme === "dim" ? "light" : "dim",
+      ...reduceKernelState(current, {
+        type: "setTheme",
+        theme: current.theme === "dim" ? "light" : "dim",
+      }),
+      persistence: current.persistence,
     }));
   }
 
@@ -425,7 +372,10 @@ export function CockpitApp() {
           </header>
 
           <section className="min-h-0 flex-1 overflow-auto p-4">
-            <CockpitOpenUiRenderer output={output} isStreaming={isSubmitting} />
+            <div className="grid gap-3">
+              <CockpitPanels output={output} />
+              <GeneratedSurfaceSlot surface={generatedSurface} />
+            </div>
           </section>
 
           <section className="cockpit-surface border-t px-4 py-3">
@@ -472,8 +422,11 @@ export function CockpitApp() {
                     aria-pressed={mode === cockpitMode}
                     onClick={() =>
                       updateCockpitState((current) => ({
-                        ...current,
-                        mode: cockpitMode,
+                        ...reduceKernelState(current, {
+                          type: "setMode",
+                          mode: cockpitMode,
+                        }),
+                        persistence: current.persistence,
                       }))
                     }
                     className={[
