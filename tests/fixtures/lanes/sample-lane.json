@@ -1,0 +1,12 @@
+{
+  "name": "sample-feedback-triage",
+  "description": "Map feedback bullets to docs-only action plan items.",
+  "promptFile": "./sample-lane.prompt.md",
+  "defaultUserMessage": "Process today's feedback.",
+  "reads": ["/fixtures/feedback/**", "/fixtures/GDD.md"],
+  "owns": ["/outputs/**"],
+  "tools": [],
+  "model": "cerebras",
+  "target": "codex.local",
+  "approval": "human.before_commit"
+}
