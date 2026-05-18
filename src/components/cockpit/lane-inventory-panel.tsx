@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface LaneSummary {
   laneId: string;
@@ -39,6 +39,7 @@ interface PanelState {
   lanes: LaneSummary[];
   error?: string;
   handoffs: Record<string, HandoffArtifact | undefined>;
+  handoffErrors: Record<string, string | undefined>;
   generating: Record<string, boolean>;
 }
 
@@ -46,6 +47,7 @@ const INITIAL_STATE: PanelState = {
   status: "loading",
   lanes: [],
   handoffs: {},
+  handoffErrors: {},
   generating: {},
 };
 
@@ -86,38 +88,40 @@ export function LaneInventoryPanel() {
     };
   }, []);
 
-  async function onGenerateHandoff(
-    fullLaneId: string,
-    target: Target,
-  ): Promise<void> {
-    setState((s) => ({
-      ...s,
-      generating: { ...s.generating, [fullLaneId]: true },
-    }));
-    try {
-      const res = await fetch(
-        `/api/cockpit/lanes/${encodeURIComponent(fullLaneId)}/handoff?target=${encodeURIComponent(target)}`,
-      );
-      if (!res.ok) {
+  const onGenerateHandoff = useCallback(
+    async (fullLaneId: string, target: Target): Promise<void> => {
+      setState((s) => ({ ...s, generating: { ...s.generating, [fullLaneId]: true } }));
+      try {
+        const res = await fetch(
+          `/api/cockpit/lanes/${encodeURIComponent(fullLaneId)}/handoff?target=${encodeURIComponent(target)}`,
+        );
+        if (!res.ok) {
+          const errMsg = `HTTP ${res.status}`;
+          setState((s) => ({
+            ...s,
+            generating: { ...s.generating, [fullLaneId]: false },
+            handoffErrors: { ...s.handoffErrors, [fullLaneId]: errMsg },
+          }));
+          return;
+        }
+        const body = (await res.json()) as { artifact: HandoffArtifact };
         setState((s) => ({
           ...s,
           generating: { ...s.generating, [fullLaneId]: false },
+          handoffs: { ...s.handoffs, [fullLaneId]: body.artifact },
+          handoffErrors: { ...s.handoffErrors, [fullLaneId]: undefined },
         }));
-        return;
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : "Request failed";
+        setState((s) => ({
+          ...s,
+          generating: { ...s.generating, [fullLaneId]: false },
+          handoffErrors: { ...s.handoffErrors, [fullLaneId]: errMsg },
+        }));
       }
-      const body = (await res.json()) as { artifact: HandoffArtifact };
-      setState((s) => ({
-        ...s,
-        generating: { ...s.generating, [fullLaneId]: false },
-        handoffs: { ...s.handoffs, [fullLaneId]: body.artifact },
-      }));
-    } catch {
-      setState((s) => ({
-        ...s,
-        generating: { ...s.generating, [fullLaneId]: false },
-      }));
-    }
-  }
+    },
+    [],
+  );
 
   if (state.status === "loading") {
     return <div className="p-4 text-sm opacity-70">Loading lanes…</div>;
@@ -186,6 +190,11 @@ export function LaneInventoryPanel() {
                 {handoff.text}
               </pre>
             )}
+            {state.handoffErrors[fullLaneId] && !handoff && (
+              <p className="mt-3 text-xs text-red-500">
+                Handoff failed: {state.handoffErrors[fullLaneId]}
+              </p>
+            )}
           </article>
         );
       })}
@@ -199,9 +208,14 @@ function HandoffControls(props: {
   onGenerate(fullLaneId: string, target: Target): void;
 }) {
   const [target, setTarget] = useState<Target>("codex.cli");
+  const selectId = `handoff-target-${props.fullLaneId}`;
   return (
     <div className="mt-3 flex items-center gap-2">
+      <label className="sr-only" htmlFor={selectId}>
+        Handoff target for {props.fullLaneId}
+      </label>
       <select
+        id={selectId}
         value={target}
         onChange={(e) => setTarget(e.target.value as Target)}
         className="rounded border border-zinc-700 bg-transparent px-2 py-1 text-xs"
