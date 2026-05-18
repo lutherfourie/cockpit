@@ -93,8 +93,9 @@ export interface LaneRunInput {
 
 /** A single to-do item emitted by the `todo` LaneEvent variant during lane execution. */
 export interface TodoItem {
-  text: string;
-  done: boolean;
+  id: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed";
 }
 
 export type LaneEvent =
