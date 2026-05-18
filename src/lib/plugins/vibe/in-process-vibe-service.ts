@@ -81,6 +81,7 @@ export class InProcessVibeService implements VibeService {
 
   private async discoverAllLanes(): Promise<ResolvedLane[]> {
     const out: ResolvedLane[] = [];
+    const seenIds = new Set<string>();
     for (const root of this.options.repoRoots) {
       const lanesDir = path.join(root, "lanes");
       let entries: string[] = [];
@@ -110,6 +111,8 @@ export class InProcessVibeService implements VibeService {
         // laneId is the spec's `name` (matches what toSummary exposes), so
         // `generateHandoff(laneId, ...)` agrees with `listLanes()` output.
         const laneId = spec.name;
+        if (seenIds.has(laneId)) continue; // first occurrence wins; later duplicates silently skipped
+        seenIds.add(laneId);
         out.push({
           laneId,
           spec,
@@ -167,7 +170,7 @@ export class InProcessVibeService implements VibeService {
       "",
       `**Target:** ${target}`,
       `**Repo:** ${lane.repoPath}`,
-      lane.spec.approval ? `**Approval gate:** ${lane.spec.approval}` : "",
+      ...(lane.spec.approval ? [`**Approval gate:** ${lane.spec.approval}`] : []),
       "",
       "## Task",
       "",

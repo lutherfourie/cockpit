@@ -27,10 +27,13 @@ describe("InProcessVibeService", () => {
     expect(lanes).toEqual([]);
   });
 
-  it("listLanes ignores invalid JSON files", async () => {
+  it("listLanes silently skips malformed JSON files (e.g., bad.json) and still returns the valid ones", async () => {
     const service = new InProcessVibeService({ repoRoots: [FIXTURES_ROOT] });
     const lanes = await service.listLanes();
+    // bad.json exists in the fixtures dir but is unparseable. It should be skipped.
     expect(lanes.find((l) => l.laneId === "sample-feedback-triage")).toBeDefined();
+    // And no lane summary should have been produced from bad.json.
+    expect(lanes.find((l) => l.laneId === "bad")).toBeUndefined();
   });
 
   it("generateHandoff returns a markdown handoff for codex.cli", async () => {
