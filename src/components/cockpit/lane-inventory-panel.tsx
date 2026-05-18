@@ -2,19 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-interface LaneSummary {
-  laneId: string;
-  pluginId: string;
-  name: string;
-  description?: string;
-  repoPath: string;
-  reads: string[];
-  owns: string[];
-  target?: string;
-  approval?: string;
-  verify?: string[];
-  status: "ready" | "running" | "error";
-}
+import type {
+  HandoffArtifact,
+  HandoffTarget,
+  LaneSummary,
+} from "@/lib/plugins/contract/types";
 
 const TARGETS = [
   "codex.web",
@@ -23,16 +15,9 @@ const TARGETS = [
   "claude.code",
   "claude.web",
   "human.review",
-] as const;
+] as const satisfies readonly HandoffTarget[];
 
 type Target = (typeof TARGETS)[number];
-
-interface HandoffArtifact {
-  text: string;
-  target: Target;
-  format: "markdown" | "json";
-  recommendedCommand?: string;
-}
 
 interface PanelState {
   status: "loading" | "ready" | "error";

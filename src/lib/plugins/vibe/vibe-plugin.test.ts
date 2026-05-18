@@ -69,11 +69,12 @@ describe("VibePlugin", () => {
     const plugin = new VibePlugin(makeStubService());
     await plugin.init(makeContext());
     const artifact = await plugin.generateHandoff!("lane-1", "codex.cli");
-    expect(artifact.text).toContain("lane-1");
-    expect(artifact.text).toContain("codex.cli");
+    expect(artifact).not.toBeNull();
+    expect(artifact!.text).toContain("lane-1");
+    expect(artifact!.text).toContain("codex.cli");
   });
 
-  it("generateHandoff throws when the service returns null (unknown lane)", async () => {
+  it("generateHandoff returns null when the service returns null (unknown lane)", async () => {
     const nullService: VibeService = {
       ...makeStubService(),
       async generateHandoff() {
@@ -82,9 +83,8 @@ describe("VibePlugin", () => {
     };
     const plugin = new VibePlugin(nullService);
     await plugin.init(makeContext());
-    await expect(
-      plugin.generateHandoff!("no-such-lane", "codex.cli"),
-    ).rejects.toThrow("no-such-lane");
+    const result = await plugin.generateHandoff!("no-such-lane", "codex.cli");
+    expect(result).toBeNull();
   });
 
   it("dispose chains to service.dispose()", async () => {

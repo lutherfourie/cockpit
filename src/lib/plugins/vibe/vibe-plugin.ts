@@ -45,11 +45,7 @@ export class VibePlugin implements CockpitPlugin {
   async generateHandoff(
     laneId: string,
     target: HandoffTarget,
-  ): Promise<HandoffArtifact> {
-    const artifact = await this.service.generateHandoff(laneId, target);
-    if (!artifact) {
-      throw new Error(`lane ${laneId} not found`);
-    }
-    return artifact;
+  ): Promise<HandoffArtifact | null> {
+    return this.service.generateHandoff(laneId, target);
   }
 }

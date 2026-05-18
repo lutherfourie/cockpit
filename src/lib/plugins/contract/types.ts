@@ -157,10 +157,16 @@ export interface CockpitPlugin {
     signal: AbortSignal,
   ): AsyncIterable<LaneEvent>;
 
+  /**
+   * Handoff: produce a ready-to-paste handoff for a target surface.
+   * Returns null if the lane is unknown to the plugin (HTTP routes can map to 404).
+   * Plugin exceptions (e.g. backend network failure) propagate to the caller
+   * (HTTP routes can map to 500).
+   */
   generateHandoff?(
     laneId: string,
     target: HandoffTarget,
-  ): Promise<HandoffArtifact>;
+  ): Promise<HandoffArtifact | null>;
 
   memoryBridge?: PluginMemoryBridge;
 }
