@@ -9,26 +9,33 @@ test("lane inventory panel lists fixture lane and generates handoff", async ({
   // lower surface to render LaneInventoryPanel. Click it first.
   await page.getByRole("button", { name: /^Lanes$/i }).click();
 
-  // Wait for the panel header (rendered as "Lanes (N)" by LaneInventoryPanel).
-  await expect(page.getByRole("heading", { name: /Lanes \(/ })).toBeVisible({
-    timeout: 10_000,
-  });
+  // Wait for the panel heading; scope to <main> so we don't pick up an
+  // accidental sibling heading elsewhere in the shell.
+  await expect(
+    page.getByRole("main").getByRole("heading", { name: /Lanes \(/ }),
+  ).toBeVisible({ timeout: 10_000 });
 
   // The fixture lane name is "sample-feedback-triage".
   await expect(page.getByText("sample-feedback-triage")).toBeVisible();
 
-  // Pick codex.cli as target and click "Generate handoff".
+  // Scope to the lane card and pick a non-default target so the dropdown
+  // change handler is genuinely exercised. The default in HandoffControls
+  // is codex.cli; we choose claude.code here.
   const laneCard = page
     .locator("article")
     .filter({ hasText: "sample-feedback-triage" });
-  await laneCard.locator("select").selectOption("codex.cli");
+  await expect(laneCard.locator("select")).toHaveValue("codex.cli");
+  await laneCard.locator("select").selectOption("claude.code");
+  await expect(laneCard.locator("select")).toHaveValue("claude.code");
+
   await laneCard.getByRole("button", { name: /Generate handoff/i }).click();
 
-  // The handoff artifact should appear in a <pre>.
+  // The handoff artifact should appear in a <pre>, with the claude.code
+  // target rendered in the body.
   await expect(laneCard.locator("pre")).toContainText(
     "# Handoff: sample-feedback-triage",
     { timeout: 5_000 },
   );
-  await expect(laneCard.locator("pre")).toContainText("**Target:** codex.cli");
+  await expect(laneCard.locator("pre")).toContainText("**Target:** claude.code");
   await expect(laneCard.locator("pre")).toContainText("## Read scope");
 });
