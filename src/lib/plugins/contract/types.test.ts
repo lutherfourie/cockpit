@@ -52,12 +52,12 @@ describe("plugin contract types", () => {
   });
 
   it("TodoItem fits inside the LaneEvent todo variant", () => {
-    const item: TodoItem = { text: "write tests", done: false };
+    const item: TodoItem = { id: "t1", content: "write tests", status: "pending" };
     const event: LaneEvent = { type: "todo", items: [item] };
     expect(event.type).toBe("todo");
     if (event.type === "todo") {
-      expect(event.items[0].text).toBe("write tests");
-      expect(event.items[0].done).toBe(false);
+      expect(event.items[0].content).toBe("write tests");
+      expect(event.items[0].status).toBe("pending");
     }
   });
 
