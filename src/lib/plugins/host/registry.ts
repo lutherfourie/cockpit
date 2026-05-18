@@ -18,14 +18,15 @@ export function buildPluginRegistry(): PluginEntry[] {
   const entries: PluginEntry[] = [];
 
   if (enabled.includes("vibe")) {
-    const roots = (process.env.COCKPIT_PLUGIN_VIBE_ROOTS ?? "")
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
     entries.push({
       id: "vibe",
-      factory: () =>
-        new VibePlugin(new InProcessVibeService({ repoRoots: roots })),
+      factory: () => {
+        const roots = (process.env.COCKPIT_PLUGIN_VIBE_ROOTS ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        return new VibePlugin(new InProcessVibeService({ repoRoots: roots }));
+      },
     });
   }
 

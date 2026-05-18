@@ -2,7 +2,7 @@ import type { PluginHostContext } from "../contract/types";
 import { PluginHost } from "./plugin-host";
 import { buildPluginRegistry } from "./registry";
 
-let cached: { host: PluginHost; promise: Promise<PluginHost> } | null = null;
+let cached: Promise<PluginHost> | null = null;
 
 /**
  * Get the process-wide plugin host. Lazily initialized on first call.
@@ -11,13 +11,10 @@ let cached: { host: PluginHost; promise: Promise<PluginHost> } | null = null;
  * twice in parallel.
  */
 export function getPluginHost(): Promise<PluginHost> {
-  if (cached) return cached.promise;
+  if (cached) return cached;
   const host = new PluginHost(makeDefaultContext());
-  const promise = host
-    .load(buildPluginRegistry())
-    .then(() => host);
-  cached = { host, promise };
-  return promise;
+  cached = host.load(buildPluginRegistry()).then(() => host);
+  return cached;
 }
 
 /** Test-only: clear the singleton so the next call rebuilds. */
