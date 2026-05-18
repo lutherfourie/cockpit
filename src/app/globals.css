@@ -469,6 +469,55 @@ input {
   color: var(--cockpit-text);
 }
 
+.cockpit-command-center {
+  color: var(--cockpit-text);
+}
+
+.cockpit-command-center-backdrop {
+  background: rgb(0 0 0 / 0.62);
+  backdrop-filter: blur(10px);
+}
+
+.cockpit-command-center-shell {
+  grid-template-rows: auto minmax(0, 1fr);
+  border-color: var(--cockpit-border-bright);
+  box-shadow: 0 28px 80px rgb(0 0 0 / 0.46);
+}
+
+.cockpit-command-center-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-color: var(--cockpit-border);
+  background: color-mix(in srgb, var(--cockpit-surface-alt) 70%, transparent);
+}
+
+.cockpit-command-side,
+.cockpit-command-artifact,
+.cockpit-command-composer {
+  border-color: var(--cockpit-border);
+  background: color-mix(in srgb, var(--cockpit-surface-alt) 54%, transparent);
+}
+
+.cockpit-timeline-event {
+  border-color: var(--cockpit-border);
+  background: color-mix(in srgb, var(--cockpit-panel) 88%, transparent);
+}
+
+.cockpit-timeline-event.is-user {
+  border-color: color-mix(in srgb, var(--cockpit-focus) 38%, var(--cockpit-border));
+}
+
+.cockpit-timeline-event.is-assistant {
+  border-color: color-mix(in srgb, var(--cockpit-parking) 34%, var(--cockpit-border));
+}
+
+.cockpit-activity-item {
+  border-color: var(--cockpit-border);
+  background: color-mix(in srgb, var(--cockpit-surface-alt) 66%, transparent);
+}
+
 .cockpit-intent-chip {
   display: inline-flex;
   align-items: center;

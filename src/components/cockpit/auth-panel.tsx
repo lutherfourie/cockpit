@@ -12,8 +12,8 @@ export function AuthPanel() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState(
     supabase
-      ? "Checking sync"
-      : "Phone sync unavailable: Supabase is not configured.",
+      ? "Checking live state"
+      : "Live state unavailable: Supabase is not configured.",
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -30,14 +30,14 @@ export function AuthPanel() {
       }
 
       setUser(data.session?.user ?? null);
-      setStatus(error ? error.message : data.session ? "Phone sync on" : "Sign in to sync");
+      setStatus(error ? error.message : data.session ? "Live state on" : "Sign in to sync");
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      setStatus(session ? "Phone sync on" : "Sign in to sync");
+      setStatus(session ? "Live state on" : "Sign in to sync");
     });
 
     return () => {
@@ -50,7 +50,7 @@ export function AuthPanel() {
     event.preventDefault();
 
     if (!supabase) {
-      setStatus("Phone sync unavailable: Supabase is not configured.");
+      setStatus("Live state unavailable: Supabase is not configured.");
       return;
     }
 
@@ -85,7 +85,7 @@ export function AuthPanel() {
   return (
     <div className="cockpit-surface-alt grid gap-2 border px-3 py-2 text-xs">
       <div className="flex items-center justify-between gap-2">
-        <span>Phone Sync</span>
+        <span>Live State</span>
         <strong>{user ? "On" : "Off"}</strong>
       </div>
       <p className="cockpit-muted leading-4">{status}</p>

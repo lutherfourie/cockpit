@@ -12,6 +12,8 @@ const publicTables = [
   "cockpit_chat_messages",
 ];
 
+const appendOnlyTables = ["cockpit_assistant_events"];
+
 const commands = ["select", "insert", "update", "delete"];
 
 describe("Supabase RLS migration", () => {
@@ -29,8 +31,20 @@ describe("Supabase RLS migration", () => {
       }
     }
 
+    for (const table of appendOnlyTables) {
+      expect(sql).toContain(`alter table public.${table} enable row level security`);
+      expect(sql).toContain(`grant select, insert on public.${table} to authenticated`);
+      expect(sql).toMatch(createOwnerPolicyPattern(table, "select"));
+      expect(sql).toMatch(createOwnerPolicyPattern(table, "insert"));
+      expect(sql).not.toMatch(createOwnerPolicyPattern(table, "update"));
+      expect(sql).not.toMatch(createOwnerPolicyPattern(table, "delete"));
+    }
+
     expect(sql.match(/user_id = \(select auth\.uid\(\)\)/g)?.length).toBeGreaterThanOrEqual(
-      publicTables.length * 5,
+      publicTables.length * 5 + appendOnlyTables.length * 2,
+    );
+    expect(sql).toContain(
+      "alter publication supabase_realtime add table public.cockpit_assistant_events",
     );
     expect(sql).not.toMatch(/user_id = auth\.uid\(\)/);
     expect(sql).not.toMatch(/service_role/i);

@@ -219,4 +219,55 @@ describe("cockpit kernel state", () => {
     expect(state.output.currentGoal).toContain("Capture the next development move");
     expect(state.generatedSurface.status).toBe("ready");
   });
+
+  it("tracks assistant workspace state and activity events", () => {
+    let state = createInitialKernelState();
+
+    state = reduceKernelState(state, {
+      type: "setAssistantWorkspace",
+      workspace: {
+        isOpen: true,
+        activeThreadId: "thread-1",
+        selectedEventId: "event-1",
+      },
+    });
+    state = reduceKernelState(state, {
+      type: "appendAssistantEvent",
+      event: {
+        id: "event-1",
+        type: "assistant_message",
+        role: "assistant",
+        content: "Use this as the next Cockpit input.",
+        metadata: { source: "test" },
+        createdAt: "2026-05-18T06:00:00.000Z",
+      },
+    });
+
+    expect(state.assistantWorkspace.isOpen).toBe(true);
+    expect(state.assistantWorkspace.activeThreadId).toBe("thread-1");
+    expect(state.assistantWorkspace.activityFeed).toEqual([
+      expect.objectContaining({ id: "event-1", type: "assistant_message" }),
+    ]);
+  });
+
+  it("keeps only the last 40 assistant activity events", () => {
+    let state = createInitialKernelState();
+
+    for (let index = 1; index <= 41; index += 1) {
+      state = reduceKernelState(state, {
+        type: "appendAssistantEvent",
+        event: {
+          id: `event-${index}`,
+          type: "tool_call",
+          content: `event ${index}`,
+          metadata: {},
+          createdAt: "2026-05-18T06:00:00.000Z",
+        },
+      });
+    }
+
+    expect(state.assistantWorkspace.activityFeed).toHaveLength(40);
+    expect(state.assistantWorkspace.activityFeed[0]?.id).toBe("event-2");
+    expect(state.assistantWorkspace.activityFeed[39]?.id).toBe("event-41");
+  });
 });
