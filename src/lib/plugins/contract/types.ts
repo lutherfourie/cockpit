@@ -144,6 +144,8 @@ export interface CockpitPlugin {
   readonly id: string;
   readonly displayName: string;
   readonly version: string;
+  /** SemVer matching the contract version this plugin was built against. See spec §8.3. */
+  readonly cockpitPluginContractVersion: string;
   readonly description?: string;
   readonly capabilities: readonly PluginCapability[];
 

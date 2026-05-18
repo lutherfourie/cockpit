@@ -13,6 +13,7 @@ function makeMockPlugin(overrides: Partial<CockpitPlugin> = {}): CockpitPlugin {
     id: "mock",
     displayName: "Mock",
     version: "0.0.0",
+    cockpitPluginContractVersion: "1.0.0",
     capabilities: ["discovery", "handoff"],
     async init() {},
     async dispose() {},

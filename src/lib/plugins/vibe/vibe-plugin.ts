@@ -20,6 +20,7 @@ export class VibePlugin implements CockpitPlugin {
   readonly id = "vibe";
   readonly displayName = "Vibe Lanes";
   readonly version = "0.1.0";
+  readonly cockpitPluginContractVersion = "1.0.0";
   readonly description = "Vibe lane discovery and surface-aware handoff generation.";
   readonly capabilities: readonly PluginCapability[] = ["discovery", "handoff"];
 
