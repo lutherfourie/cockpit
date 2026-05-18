@@ -38,6 +38,7 @@ import {
 import { CockpitPanels } from "@/components/cockpit/cockpit-panels";
 import { AuthPanel } from "@/components/cockpit/auth-panel";
 import { GeneratedSurfaceSlot } from "@/components/cockpit/generated-surface-slot";
+import { LaneInventoryPanel } from "@/components/cockpit/lane-inventory-panel";
 import {
   ActivityFeed,
   AssistantCommandCenter,
@@ -79,7 +80,7 @@ const MODE_LABELS: Record<CockpitMode, string> = {
 
 const COCKPIT_STATE_CHANGED_EVENT = "cockpit:state-changed";
 
-type LowerSurface = "evidence" | "openui" | "handoff" | "review";
+type LowerSurface = "evidence" | "openui" | "handoff" | "review" | "lanes";
 
 type CaptureIntent =
   | { kind: "url"; label: string; action: string }
@@ -875,6 +876,11 @@ export function CockpitApp() {
                 onClick={() => setLowerSurface("review")}
               />
               <RailButton
+                label="Lanes"
+                active={lowerSurface === "lanes"}
+                onClick={() => setLowerSurface("lanes")}
+              />
+              <RailButton
                 label="Assistant"
                 active={assistantWorkspace.isOpen}
                 onClick={() => setAssistantWorkspaceOpen(true)}
@@ -1276,6 +1282,17 @@ function LowerSurface({
             items={output.assumptions}
           />
         </div>
+      </section>
+    );
+  }
+
+  if (surface === "lanes") {
+    return (
+      <section
+        className="cockpit-panel border p-0"
+        data-testid="lanes"
+      >
+        <LaneInventoryPanel />
       </section>
     );
   }
