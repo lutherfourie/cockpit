@@ -7,7 +7,7 @@ import type {
 /**
  * Vibe runtime interface — Phase 1 subset.
  *
- * Per spec Section 3, there will be two implementations:
+ * Per spec Section 3 (outline; details TBD for Phase 2+), there will be two implementations:
  *   - InProcessVibeService (default; runs in Cockpit's process)
  *   - RemoteVibeService    (Phase 5; HTTP/WS client to a Vibe daemon)
  *
@@ -29,4 +29,11 @@ export interface VibeService {
     laneId: string,
     target: HandoffTarget,
   ): Promise<HandoffArtifact | null>;
+
+  /**
+   * Release any resources held by this service instance (file watchers, open
+   * connections). Called by VibePlugin.dispose(); safe to call multiple times.
+   * Phase 1 implementations may be no-ops since no long-lived resources exist yet.
+   */
+  dispose(): Promise<void>;
 }
