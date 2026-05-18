@@ -28,6 +28,10 @@
 .DS_Store
 *.pem
 
+# personal agent context (not shared with team)
+.claude.local.md
+/.claude/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
