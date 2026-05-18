@@ -17,6 +17,7 @@ describe("plugin contract types", () => {
       id: "test",
       displayName: "Test",
       version: "0.0.0",
+      cockpitPluginContractVersion: "1.0.0",
       capabilities: ["discovery"],
       async init() {},
       async dispose() {},
