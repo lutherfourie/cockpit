@@ -4,6 +4,10 @@ import {
   type CockpitAgentOutput,
   type CockpitMode,
 } from "./schema";
+import {
+  AssistantEventSchema,
+  type AssistantEvent,
+} from "./assistant-events";
 
 export type CockpitTheme = "dim" | "light";
 
@@ -32,6 +36,14 @@ export type CockpitKernelState = {
   theme: CockpitTheme;
   generatedSurface: GeneratedSurface;
   thoughtChat: ThoughtChatMessage[];
+  assistantWorkspace: AssistantWorkspaceState;
+};
+
+export type AssistantWorkspaceState = {
+  isOpen: boolean;
+  activeThreadId?: string;
+  selectedEventId?: string;
+  activityFeed: AssistantEvent[];
 };
 
 export type KernelAction =
@@ -40,11 +52,18 @@ export type KernelAction =
   | { type: "setTheme"; theme: CockpitTheme }
   | { type: "park"; content: string }
   | { type: "appendThoughtMessage"; message: ThoughtChatMessage }
-  | { type: "setGeneratedSurface"; surface: GeneratedSurface };
+  | { type: "setGeneratedSurface"; surface: GeneratedSurface }
+  | {
+      type: "setAssistantWorkspace";
+      workspace: Partial<Omit<AssistantWorkspaceState, "activityFeed">>;
+    }
+  | { type: "setAssistantEvents"; events: AssistantEvent[] }
+  | { type: "appendAssistantEvent"; event: AssistantEvent };
 
 export const COCKPIT_STATE_STORAGE_KEY = "cockpit:v1:state";
 
 const MAX_PARKING_ITEMS = 5;
+const MAX_ASSISTANT_EVENTS = 40;
 const THEMES = ["dim", "light"] as const;
 
 const INITIAL_OUTPUT: CockpitAgentOutput = {
@@ -64,6 +83,7 @@ export function createInitialKernelState(): CockpitKernelState {
     theme: "dim",
     generatedSurface: { status: "empty" },
     thoughtChat: [],
+    assistantWorkspace: createInitialAssistantWorkspace(),
   };
 }
 
@@ -109,6 +129,11 @@ export function parseKernelState(rawState: string | null): CockpitKernelState {
         "thoughtChat" in parsed && Array.isArray(parsed.thoughtChat)
           ? parsed.thoughtChat.slice(-20)
           : initial.thoughtChat,
+      assistantWorkspace:
+        "assistantWorkspace" in parsed
+          ? parseAssistantWorkspace(parsed.assistantWorkspace) ??
+            initial.assistantWorkspace
+          : initial.assistantWorkspace,
     };
   } catch {
     return createInitialKernelState();
@@ -157,6 +182,36 @@ export function reduceKernelState(
       };
     case "setGeneratedSurface":
       return { ...state, generatedSurface: action.surface };
+    case "setAssistantWorkspace":
+      return {
+        ...state,
+        assistantWorkspace: {
+          ...state.assistantWorkspace,
+          ...action.workspace,
+          activityFeed: state.assistantWorkspace.activityFeed,
+        },
+      };
+    case "setAssistantEvents":
+      return {
+        ...state,
+        assistantWorkspace: {
+          ...state.assistantWorkspace,
+          activityFeed: action.events.slice(-MAX_ASSISTANT_EVENTS),
+        },
+      };
+    case "appendAssistantEvent":
+      return {
+        ...state,
+        assistantWorkspace: {
+          ...state.assistantWorkspace,
+          activityFeed: [
+            ...state.assistantWorkspace.activityFeed.filter(
+              (event) => event.id !== action.event.id,
+            ),
+            action.event,
+          ].slice(-MAX_ASSISTANT_EVENTS),
+        },
+      };
   }
 }
 
@@ -170,6 +225,13 @@ function createInitialOutput(): CockpitAgentOutput {
     parkingLot: [...INITIAL_OUTPUT.parkingLot],
     assumptions: [...INITIAL_OUTPUT.assumptions],
     blockers: [...INITIAL_OUTPUT.blockers],
+  };
+}
+
+function createInitialAssistantWorkspace(): AssistantWorkspaceState {
+  return {
+    isOpen: false,
+    activityFeed: [],
   };
 }
 
@@ -210,7 +272,9 @@ function isValidPersistedKernelState(
       parseGeneratedSurface(value.generatedSurface) !== undefined) &&
     (!("thoughtChat" in value) ||
       (Array.isArray(value.thoughtChat) &&
-        value.thoughtChat.every(isThoughtChatMessage)))
+        value.thoughtChat.every(isThoughtChatMessage))) &&
+    (!("assistantWorkspace" in value) ||
+      parseAssistantWorkspace(value.assistantWorkspace) !== undefined)
   );
 }
 
@@ -265,6 +329,62 @@ function parseGeneratedSurface(value: unknown): GeneratedSurface | undefined {
   }
 
   return undefined;
+}
+
+function parseAssistantWorkspace(
+  value: unknown,
+): AssistantWorkspaceState | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  if (typeof value.isOpen !== "boolean") {
+    return undefined;
+  }
+
+  if (
+    "activeThreadId" in value &&
+    value.activeThreadId !== undefined &&
+    typeof value.activeThreadId !== "string"
+  ) {
+    return undefined;
+  }
+
+  if (
+    "selectedEventId" in value &&
+    value.selectedEventId !== undefined &&
+    typeof value.selectedEventId !== "string"
+  ) {
+    return undefined;
+  }
+
+  if (
+    "activityFeed" in value &&
+    (!Array.isArray(value.activityFeed) ||
+      !value.activityFeed.every(
+        (event) => AssistantEventSchema.safeParse(event).success,
+      ))
+  ) {
+    return undefined;
+  }
+
+  return {
+    isOpen: value.isOpen,
+    activeThreadId:
+      typeof value.activeThreadId === "string" ? value.activeThreadId : undefined,
+    selectedEventId:
+      typeof value.selectedEventId === "string"
+        ? value.selectedEventId
+        : undefined,
+    activityFeed: Array.isArray(value.activityFeed)
+      ? value.activityFeed
+          .flatMap((event) => {
+            const parsed = AssistantEventSchema.safeParse(event);
+            return parsed.success ? [parsed.data] : [];
+          })
+          .slice(-MAX_ASSISTANT_EVENTS)
+      : [],
+  };
 }
 
 function isGeneratedSurfaceActions(

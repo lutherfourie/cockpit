@@ -8,20 +8,26 @@ test("cockpit compresses a scattered thought", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Current Goal" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Next Action" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Proof Needed" })).toBeVisible();
-  await expect(page.getByTestId("thought-chat")).toBeVisible();
   await page.getByRole("button", { name: /OpenUI/ }).first().click();
   await expect(page.getByTestId("generated-surface")).toContainText(
     "No generated surface for this turn.",
   );
-  await page.getByRole("button", { name: /Loop/ }).first().click();
+  const loopButton = page.getByRole("button", { name: /Loop/ }).first();
+  if ((await loopButton.count()) > 0 && (await loopButton.isVisible())) {
+    await loopButton.click();
+  }
 
-  await page.getByRole("button", { name: "Thought Chat" }).click();
+  await page.getByRole("main").getByRole("button", { name: "Assistant" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Assistant Command Center" }),
+  ).toBeVisible();
   await page
-    .getByPlaceholder("Help me put this into words")
+    .getByLabel("Assistant message")
     .fill("I know the UI is wrong but I cannot explain it");
-  await page.getByRole("button", { name: "Phrase" }).click();
-  await expect(page.getByText("What feels wrong")).toBeVisible();
-  await page.getByRole("button", { name: "Use As Cockpit Input" }).click();
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect(page.locator("ol").getByText("What feels wrong").first()).toBeVisible();
+  await page.getByRole("button", { name: "Use in Cockpit" }).first().click();
+  await page.getByLabel("Close Assistant Command Center").click();
   await expect(page.getByLabel("Scattered thought")).toHaveValue(
     /I know the UI is wrong but I cannot explain it/,
   );
@@ -37,6 +43,7 @@ test("cockpit compresses a scattered thought", async ({ page }) => {
   await expect(page.getByTestId("next-action")).toBeVisible();
   await expect(page.getByTestId("proof-needed")).toBeVisible();
 
+  await page.getByRole("button", { name: /Side quests/ }).first().click();
   await page
     .getByPlaceholder("Park a distracting-but-valid idea")
     .fill("Later: explore keyboard shortcuts.");

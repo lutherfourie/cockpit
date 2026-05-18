@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  assistantEventsFromChatMessages,
+  parseAssistantEventRows,
+  type AppendAssistantEventInput,
+  type AssistantEvent,
+} from "./assistant-events";
 import type { ThoughtChatHistoryMessage, ThoughtChatRole } from "./thought-chat";
 import type { CockpitAgentOutput } from "./schema";
 
@@ -15,6 +21,7 @@ export type SessionState = {
 export interface CockpitMemoryStore {
   loadSessionState(sessionId?: string): Promise<SessionState | null>;
   loadChatMessages?(sessionId?: string): Promise<ThoughtChatHistoryMessage[]>;
+  loadAssistantEvents?(sessionId?: string): Promise<AssistantEvent[]>;
   saveSessionState(args: {
     sessionId?: string;
     message: string;
@@ -25,6 +32,9 @@ export interface CockpitMemoryStore {
     role: ThoughtChatRole;
     content: string;
   }): Promise<{ saved: boolean; reason?: string }>;
+  appendAssistantEvent?(
+    args: AppendAssistantEventInput,
+  ): Promise<{ event?: AssistantEvent; saved: boolean; reason?: string }>;
   addParkingLotItem(args: {
     sessionId?: string;
     content: string;
@@ -50,6 +60,10 @@ export class NullCockpitMemoryStore implements CockpitMemoryStore {
     return [];
   }
 
+  async loadAssistantEvents(): Promise<AssistantEvent[]> {
+    return [];
+  }
+
   async saveSessionState(): Promise<{
     sessionId?: string;
     saved: boolean;
@@ -59,6 +73,10 @@ export class NullCockpitMemoryStore implements CockpitMemoryStore {
   }
 
   async saveChatMessage(): Promise<{ saved: boolean; reason: string }> {
+    return { saved: false, reason: this.reason };
+  }
+
+  async appendAssistantEvent(): Promise<{ saved: boolean; reason: string }> {
     return { saved: false, reason: this.reason };
   }
 
@@ -128,6 +146,25 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
       }));
   }
 
+  async loadAssistantEvents(sessionId?: string): Promise<AssistantEvent[]> {
+    let query = this.supabase
+      .from("cockpit_assistant_events")
+      .select("id,event_type,role,content,metadata,created_at")
+      .eq("user_id", this.userId)
+      .order("created_at", { ascending: false })
+      .limit(40);
+
+    query = sessionId ? query.eq("session_id", sessionId) : query.is("session_id", null);
+
+    const { data, error } = await query;
+
+    if (!error && data && data.length > 0) {
+      return parseAssistantEventRows(data.slice().reverse());
+    }
+
+    return assistantEventsFromChatMessages(await this.loadChatMessages(sessionId));
+  }
+
   async saveSessionState({
     sessionId,
     message,
@@ -192,6 +229,40 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
     });
 
     return error ? { saved: false, reason: error.message } : { saved: true };
+  }
+
+  async appendAssistantEvent({
+    sessionId,
+    type,
+    role,
+    content,
+    metadata,
+  }: AppendAssistantEventInput): Promise<{
+    event?: AssistantEvent;
+    saved: boolean;
+    reason?: string;
+  }> {
+    const { data, error } = await this.supabase
+      .from("cockpit_assistant_events")
+      .insert({
+        user_id: this.userId,
+        session_id: sessionId ?? null,
+        event_type: type,
+        role: role ?? null,
+        content,
+        metadata: metadata ?? {},
+      })
+      .select("id,event_type,role,content,metadata,created_at")
+      .single();
+
+    if (error) {
+      return { saved: false, reason: error.message };
+    }
+
+    return {
+      event: parseAssistantEventRows([data])[0],
+      saved: true,
+    };
   }
 
   async addParkingLotItem({

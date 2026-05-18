@@ -14,9 +14,9 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
-  Crosshair,
   FileSearch,
   Loader2,
+  MessageSquareText,
   Moon,
   Plus,
   Radio,
@@ -38,7 +38,13 @@ import {
 import { CockpitPanels } from "@/components/cockpit/cockpit-panels";
 import { AuthPanel } from "@/components/cockpit/auth-panel";
 import { GeneratedSurfaceSlot } from "@/components/cockpit/generated-surface-slot";
-import { ThoughtChatLane } from "@/components/cockpit/thought-chat-lane";
+import {
+  ActivityFeed,
+  AssistantCommandCenter,
+} from "@/components/cockpit/assistant-command-center";
+import { useCockpitCopilotAvailable } from "@/components/cockpit/copilot-provider";
+import { CopilotToolBridge } from "@/components/cockpit/copilot-tools";
+import { createSupabaseBrowserClient } from "@/lib/cockpit/supabase-client";
 import {
   COCKPIT_STATE_STORAGE_KEY,
   createInitialKernelState,
@@ -47,8 +53,14 @@ import {
   serializeKernelState,
   type CockpitKernelState,
   type GeneratedSurface,
-  type ThoughtChatMessage,
 } from "@/lib/cockpit/kernel-state";
+import {
+  AssistantEventSchema,
+  createLocalAssistantEvent,
+  parseAssistantEventRows,
+  type AppendAssistantEventInput,
+  type AssistantEvent,
+} from "@/lib/cockpit/assistant-events";
 
 const INITIAL_PERSISTENCE: CockpitPersistence = {
   saved: false,
@@ -63,16 +75,6 @@ const MODE_LABELS: Record<CockpitMode, string> = {
   recover: "Recover",
   review: "Review",
   handoff: "Handoff",
-};
-
-const MODE_LENSES: Record<CockpitMode, string> = {
-  auto: "Focus",
-  clarify: "Compress",
-  plan: "Sketch",
-  focus: "Move",
-  recover: "Stabilize",
-  review: "Inspect",
-  handoff: "Save",
 };
 
 const COCKPIT_STATE_CHANGED_EVENT = "cockpit:state-changed";
@@ -211,7 +213,16 @@ function writePersistedCockpitState(state: PersistedCockpitState) {
   }
 }
 
+function updatePersistedCockpitState(
+  updater: (current: PersistedCockpitState) => PersistedCockpitState,
+) {
+  writePersistedCockpitState(
+    updater(parsePersistedCockpitState(getCockpitStateSnapshot())),
+  );
+}
+
 export function CockpitApp() {
+  const isCopilotRuntimeEnabled = useCockpitCopilotAvailable();
   const persistedStateRaw = useSyncExternalStore(
     subscribeToCockpitState,
     getCockpitStateSnapshot,
@@ -221,12 +232,25 @@ export function CockpitApp() {
     () => parsePersistedCockpitState(persistedStateRaw),
     [persistedStateRaw],
   );
-  const { mode, theme, output, sessionId, persistence, generatedSurface, thoughtChat } =
+  const {
+    mode,
+    theme,
+    output,
+    sessionId,
+    generatedSurface,
+    assistantWorkspace,
+  } =
     cockpitState;
   const [message, setMessage] = useState("");
   const [parkingDraft, setParkingDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAssistantSubmitting, setIsAssistantSubmitting] = useState(false);
+  const [assistantRuntimeStatus, setAssistantRuntimeStatus] = useState(
+    isCopilotRuntimeEnabled
+      ? "Checking assistant runtime."
+      : "OPENAI_API_KEY is not configured. Cockpit assistant local fallback is active.",
+  );
   const [lowerSurface, setLowerSurface] = useState<LowerSurface>("evidence");
   const [focusMode, setFocusMode] = useState(false);
 
@@ -239,16 +263,6 @@ export function CockpitApp() {
     }
     return sessionId ? "Session active" : "Local session";
   }, [error, isSubmitting, sessionId]);
-
-  const memoryStatus = (() => {
-    if (persistence.source === "supabase" && persistence.saved) {
-      return "Memory linked";
-    }
-    if (persistence.source === "local") {
-      return "Local cache";
-    }
-    return "Not synced";
-  })();
 
   const captureIntent = useMemo(() => detectCaptureIntent(message), [message]);
   const slashCommands = useMemo(() => {
@@ -316,12 +330,147 @@ export function CockpitApp() {
     return () => window.removeEventListener("keydown", handleShortcut);
   }, []);
 
+  useEffect(() => {
+    if (!isCopilotRuntimeEnabled) {
+      return;
+    }
+
+    let isCurrent = true;
+
+    fetch("/api/copilotkit")
+      .then(async (response) => {
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          reason?: string;
+        };
+        return payload.ok
+          ? "CopilotKit runtime ready."
+          : (payload.reason ?? "Local assistant fallback active.");
+      })
+      .then((status) => {
+        if (isCurrent) {
+          setAssistantRuntimeStatus(status);
+        }
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setAssistantRuntimeStatus("Local assistant fallback active.");
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [isCopilotRuntimeEnabled]);
+
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+
+    let isCurrent = true;
+    const controller = new AbortController();
+
+    updatePersistedCockpitState((current) => ({
+      ...reduceKernelState(current, {
+        type: "setAssistantWorkspace",
+        workspace: { activeThreadId: sessionId },
+      }),
+      persistence: current.persistence,
+    }));
+
+    fetch(`/api/cockpit/assistant?sessionId=${encodeURIComponent(sessionId)}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          return [];
+        }
+
+        const payload = (await response.json()) as { events?: unknown };
+        return parseAssistantEvents(payload.events);
+      })
+      .then((events) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        updatePersistedCockpitState((current) => ({
+          ...reduceKernelState(current, {
+            type: "setAssistantEvents",
+            events,
+          }),
+          persistence: current.persistence,
+        }));
+      })
+      .catch((loadError) => {
+        if (loadError instanceof DOMException && loadError.name === "AbortError") {
+          return;
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`cockpit-assistant-events:${sessionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "cockpit_assistant_events",
+          filter: `session_id=eq.${sessionId}`,
+        },
+        (payload) => {
+          const [event] = parseAssistantEventRows([
+            payload.new as {
+              id: string;
+              event_type: string;
+              role: string | null;
+              content: string;
+              metadata: unknown;
+              created_at: string;
+            },
+          ]);
+
+          if (!event) {
+            return;
+          }
+
+          updatePersistedCockpitState((current) => ({
+            ...reduceKernelState(current, {
+              type: "appendAssistantEvent",
+              event,
+            }),
+            persistence: current.persistence,
+          }));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [sessionId]);
+
   function updateCockpitState(
     updater: (current: PersistedCockpitState) => PersistedCockpitState,
   ) {
-    writePersistedCockpitState(
-      updater(parsePersistedCockpitState(getCockpitStateSnapshot())),
-    );
+    updatePersistedCockpitState(updater);
   }
 
   function updateMode(nextMode: CockpitMode) {
@@ -464,18 +613,199 @@ export function CockpitApp() {
     }));
   }
 
-  function appendThoughtMessage(thoughtMessage: ThoughtChatMessage) {
+  function setAssistantWorkspaceOpen(isOpen: boolean) {
     updateCockpitState((current) => ({
       ...reduceKernelState(current, {
-        type: "appendThoughtMessage",
-        message: thoughtMessage,
+        type: "setAssistantWorkspace",
+        workspace: { isOpen, activeThreadId: sessionId },
       }),
       persistence: current.persistence,
     }));
   }
 
-  function promoteThoughtChatText(promoteText: string) {
+  async function submitAssistantMessage(assistantMessage: string) {
+    setIsAssistantSubmitting(true);
+
+    try {
+      const response = await fetch("/api/cockpit/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: assistantMessage,
+          ...(sessionId ? { sessionId } : {}),
+        }),
+      });
+      const payload = (await response.json()) as {
+        events?: unknown;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Assistant request failed.");
+      }
+
+      appendAssistantEvents(parseAssistantEvents(payload.events));
+    } catch (requestError) {
+      appendAssistantEvents([
+        createLocalAssistantEvent({
+          type: "tool_result",
+          role: "system",
+          content:
+            requestError instanceof Error
+              ? requestError.message
+              : "Assistant request failed.",
+          metadata: { source: "assistant_command_center", status: "error" },
+        }),
+      ]);
+    } finally {
+      setIsAssistantSubmitting(false);
+    }
+  }
+
+  function promoteAssistantText(promoteText: string) {
     setMessage(promoteText);
+    void persistAssistantAction({
+      type: "promotion",
+      role: "system",
+      content: promoteText,
+      metadata: { source: "assistant_command_center" },
+    });
+  }
+
+  function parkAssistantText(parkContent: string) {
+    parkText(parkContent);
+    void persistAssistantAction({
+      type: "parked_item",
+      role: "system",
+      content: parkContent,
+      metadata: { source: "assistant_command_center" },
+    });
+  }
+
+  function createAssistantHandoff(handoffContent: string) {
+    updateMode("handoff");
+    setLowerSurface("handoff");
+    setMessage(`Handoff draft:\n${handoffContent}`);
+    void persistAssistantAction({
+      type: "handoff",
+      role: "system",
+      content: handoffContent,
+      metadata: { source: "assistant_command_center", target: "cockpit" },
+    });
+  }
+
+  function attachAssistantGeneratedSurface(surface: {
+    title: string;
+    body: string;
+    kind: "assistant_note" | "prompt_mentor" | "experiment_setup";
+  }) {
+    updateCockpitState((current) => ({
+      ...reduceKernelState(current, {
+        type: "setGeneratedSurface",
+        surface: {
+          status: "ready",
+          kind: surface.kind,
+          title: surface.title,
+          body: surface.body,
+        },
+      }),
+      persistence: current.persistence,
+    }));
+    setLowerSurface("openui");
+    void persistAssistantAction({
+      type: "artifact",
+      role: "assistant",
+      content: `${surface.title}\n\n${surface.body}`,
+      metadata: {
+        source: "copilotkit_frontend_tool",
+        kind: surface.kind,
+      },
+    });
+  }
+
+  function compressToCockpitOutput(nextOutput: {
+    currentGoal: string;
+    nextAction: string;
+    proofNeeded: string;
+    assumptions?: string[];
+    blockers?: string[];
+  }) {
+    updateCockpitState((current) => ({
+      ...reduceKernelState(current, {
+        type: "setOutput",
+        output: {
+          currentGoal: nextOutput.currentGoal,
+          nextAction: nextOutput.nextAction,
+          proofNeeded: nextOutput.proofNeeded,
+          parkingLot: current.output.parkingLot,
+          assumptions: nextOutput.assumptions ?? [],
+          blockers: nextOutput.blockers ?? [],
+        },
+        sessionId,
+      }),
+      persistence: current.persistence,
+    }));
+    void persistAssistantAction({
+      type: "tool_result",
+      role: "assistant",
+      content: nextOutput.nextAction,
+      metadata: {
+        source: "copilotkit_frontend_tool",
+        currentGoal: nextOutput.currentGoal,
+        proofNeeded: nextOutput.proofNeeded,
+      },
+    });
+  }
+
+  async function persistAssistantAction(
+    eventInput: Omit<AppendAssistantEventInput, "sessionId">,
+  ) {
+    try {
+      const response = await fetch("/api/cockpit/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...eventInput,
+          ...(sessionId ? { sessionId } : {}),
+        }),
+      });
+      const payload = (await response.json()) as { event?: unknown };
+      const [event] = parseAssistantEvents([payload.event]);
+
+      if (response.ok && event) {
+        appendAssistantEvents([event]);
+      }
+    } catch {
+      appendAssistantEvents([
+        createLocalAssistantEvent({
+          type: eventInput.type,
+          role: eventInput.role,
+          content: eventInput.content,
+          metadata: {
+            ...eventInput.metadata,
+            persistence: "local",
+          },
+        }),
+      ]);
+    }
+  }
+
+  function appendAssistantEvents(events: AssistantEvent[]) {
+    if (events.length === 0) {
+      return;
+    }
+
+    updateCockpitState((current) => {
+      let next: CockpitKernelState = current;
+      for (const event of events) {
+        next = reduceKernelState(next, {
+          type: "appendAssistantEvent",
+          event,
+        });
+      }
+
+      return { ...next, persistence: current.persistence };
+    });
   }
 
   return (
@@ -520,9 +850,9 @@ export function CockpitApp() {
               </button>
             </div>
 
-            <nav className="mt-5 space-y-2" aria-label="Cockpit screens">
+            <nav className="mt-5 space-y-2" aria-label="Cockpit workspace">
               <p className="cockpit-muted text-xs font-semibold uppercase tracking-normal">
-                Screens
+                Workspace
               </p>
               <RailButton
                 label="Loop"
@@ -544,19 +874,14 @@ export function CockpitApp() {
                 active={lowerSurface === "review"}
                 onClick={() => setLowerSurface("review")}
               />
+              <RailButton
+                label="Assistant"
+                active={assistantWorkspace.isOpen}
+                onClick={() => setAssistantWorkspaceOpen(true)}
+              />
             </nav>
 
             <div className="cockpit-readout-stack mt-5 space-y-2 text-xs">
-              <div className="cockpit-mini-readout border px-3 py-2">
-                <Crosshair className="size-4" />
-                <span>Lens</span>
-                <strong>{MODE_LABELS[mode]}</strong>
-              </div>
-              <div className="cockpit-mini-readout border px-3 py-2">
-                <CheckCircle2 className="size-4" />
-                <span>Memory</span>
-                <strong>{memoryStatus}</strong>
-              </div>
               <AuthPanel />
             </div>
           </aside>
@@ -568,7 +893,7 @@ export function CockpitApp() {
               <div>
                 <p className="cockpit-muted mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-normal">
                   <Activity className="size-4" />
-                  {MODE_LABELS[mode]} lens - {MODE_LENSES[mode]}
+                  {MODE_LABELS[mode]} mode
                 </p>
                 <h1 className="text-xl font-semibold tracking-normal md:text-2xl">
                   {mode === "auto"
@@ -640,14 +965,6 @@ export function CockpitApp() {
                     onParkingDraftChange={setParkingDraft}
                     onSaveParkingLotItem={saveParkingLotItem}
                   />
-                  <div className="2xl:hidden">
-                    <ThoughtChatLane
-                      messages={thoughtChat}
-                      onAppendMessage={appendThoughtMessage}
-                      onPromote={promoteThoughtChatText}
-                      compact
-                    />
-                  </div>
                 </>
               ) : null}
             </div>
@@ -667,6 +984,14 @@ export function CockpitApp() {
                   <span className="cockpit-muted">Composing turn</span>
                 </div>
                 <div className="cockpit-muted flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAssistantWorkspaceOpen(true)}
+                    className="cockpit-button inline-flex min-h-7 items-center justify-center gap-1 border px-2 text-xs font-semibold"
+                  >
+                    <MessageSquareText className="size-3.5" />
+                    Assistant
+                  </button>
                   <span>
                     Send <ShortcutMark>Ctrl+Enter</ShortcutMark>
                   </span>
@@ -750,13 +1075,32 @@ export function CockpitApp() {
           <aside className="cockpit-surface cockpit-pulse-rail hidden min-h-0 overflow-auto border-l px-4 py-4 2xl:block">
             <RightRail
               output={output}
-              messages={thoughtChat}
-              onAppendMessage={appendThoughtMessage}
-              onPromote={promoteThoughtChatText}
+              events={assistantWorkspace.activityFeed}
+              onOpenAssistant={() => setAssistantWorkspaceOpen(true)}
             />
           </aside>
         ) : null}
       </div>
+      {isCopilotRuntimeEnabled ? (
+        <CopilotToolBridge
+          onPromote={promoteAssistantText}
+          onPark={parkAssistantText}
+          onCreateHandoff={createAssistantHandoff}
+          onAttachGeneratedSurface={attachAssistantGeneratedSurface}
+          onCompressToOutput={compressToCockpitOutput}
+        />
+      ) : null}
+      <AssistantCommandCenter
+        isOpen={assistantWorkspace.isOpen}
+        events={assistantWorkspace.activityFeed}
+        isSubmitting={isAssistantSubmitting}
+        runtimeStatus={assistantRuntimeStatus}
+        onClose={() => setAssistantWorkspaceOpen(false)}
+        onSubmitMessage={submitAssistantMessage}
+        onPromote={promoteAssistantText}
+        onPark={parkAssistantText}
+        onCreateHandoff={createAssistantHandoff}
+      />
     </div>
   );
 }
@@ -1018,17 +1362,17 @@ function ReviewList({
 
 function RightRail({
   output,
-  messages,
-  onAppendMessage,
-  onPromote,
+  events,
+  onOpenAssistant,
 }: {
   output: CockpitAgentOutput;
-  messages: ThoughtChatMessage[];
-  onAppendMessage: (message: ThoughtChatMessage) => void;
-  onPromote: (text: string) => void;
+  events: AssistantEvent[];
+  onOpenAssistant: () => void;
 }) {
   return (
     <div className="grid gap-3">
+      <ActivityFeed events={events} proofNeeded={output.proofNeeded} />
+
       <section className="cockpit-panel cockpit-panel-blocker border p-4">
         <div className="cockpit-panel-heading mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-normal">
           <ShieldAlert className="size-4" />
@@ -1050,19 +1394,26 @@ function RightRail({
       <section className="cockpit-panel border p-4">
         <div className="cockpit-panel-heading mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-normal">
           <Sparkles className="size-4" />
-          <h2>Assistant</h2>
+          <h2>Widgets</h2>
         </div>
-        <p className="cockpit-muted mb-3 text-sm leading-5">
-          MCP-enabled thought chat. Use it to phrase the messy bit before sending
-          it into the focus loop.
-        </p>
-        <ThoughtChatLane
-          messages={messages}
-          onAppendMessage={onAppendMessage}
-          onPromote={onPromote}
-          compact
-          testId="right-thought-chat"
-        />
+        <div className="grid gap-2">
+          <div className="cockpit-activity-item border px-3 py-2">
+            <p className="cockpit-muted mb-1 text-xs font-semibold uppercase tracking-normal">
+              Handoff readiness
+            </p>
+            <p className="text-sm leading-5">
+              {output.handoff ? "Handoff draft exists." : "No handoff draft yet."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenAssistant}
+            className="cockpit-button inline-flex min-h-10 items-center justify-center gap-2 border px-3 text-sm font-semibold"
+          >
+            <MessageSquareText className="size-4" />
+            Open Assistant
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -1099,4 +1450,15 @@ function detectCaptureIntent(text: string): CaptureIntent | null {
   }
 
   return null;
+}
+
+function parseAssistantEvents(value: unknown): AssistantEvent[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((event) => {
+    const parsed = AssistantEventSchema.safeParse(event);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
