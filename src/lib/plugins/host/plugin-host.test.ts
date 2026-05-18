@@ -65,10 +65,11 @@ describe("PluginHost", () => {
     expect(lanes[0].laneId).toBe("lane-a");
   });
 
-  it("namespaces laneId by plugin when fetched from host", async () => {
+  it("returned laneId is the bare plugin-side id (not pre-namespaced)", async () => {
     const host = new PluginHost(makeHostContext());
     await host.load([{ id: "mock", factory: () => makeMockPlugin() }]);
     const lanes = await host.listAllLanes();
+    expect(lanes[0].laneId).toBe("lane-a"); // bare, not "mock:lane-a"
     expect(lanes[0].pluginId).toBe("mock");
   });
 
@@ -136,6 +137,13 @@ describe("PluginHost", () => {
     const artifact = await host.generateHandoff("mock:lane-a", "codex.cli");
     expect(artifact?.text).toContain("lane-a");
     expect(artifact?.text).toContain("codex.cli");
+  });
+
+  it("generateHandoff returns null when the pluginId is unknown", async () => {
+    const host = new PluginHost(makeHostContext());
+    await host.load([{ id: "mock", factory: () => makeMockPlugin() }]);
+    const artifact = await host.generateHandoff("nonexistent:lane-a", "codex.cli");
+    expect(artifact).toBeNull();
   });
 
   it("dispose calls each plugin's dispose", async () => {

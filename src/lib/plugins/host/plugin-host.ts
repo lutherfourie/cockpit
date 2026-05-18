@@ -39,9 +39,18 @@ export class PluginHost {
 
   constructor(private readonly context: PluginHostContext) {}
 
-  /** Load plugins. Each is init'd; failures are contained. */
+  /**
+   * Load plugins. Each is init'd; failures are contained.
+   *
+   * If a plugin id is already loaded, the duplicate is skipped with a warning.
+   * Callers wanting to re-load must call `dispose()` first.
+   */
   async load(entries: PluginEntry[]): Promise<void> {
     for (const entry of entries) {
+      if (this.plugins.has(entry.id)) {
+        this.context.log.warn(`plugin ${entry.id} already loaded; call dispose() before re-loading`);
+        continue;
+      }
       const loaded: LoadedPlugin = {
         id: entry.id,
         entry,
@@ -134,6 +143,7 @@ export class PluginHost {
         }
       }
       loaded.status = "disposed";
+      loaded.instance = null;
     }
   }
 }
