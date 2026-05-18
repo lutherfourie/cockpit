@@ -73,6 +73,29 @@ describe("VibePlugin", () => {
     expect(artifact.text).toContain("codex.cli");
   });
 
+  it("generateHandoff throws when the service returns null (unknown lane)", async () => {
+    const nullService: VibeService = {
+      ...makeStubService(),
+      async generateHandoff() {
+        return null;
+      },
+    };
+    const plugin = new VibePlugin(nullService);
+    await plugin.init(makeContext());
+    await expect(
+      plugin.generateHandoff!("no-such-lane", "codex.cli"),
+    ).rejects.toThrow("no-such-lane");
+  });
+
+  it("dispose chains to service.dispose()", async () => {
+    const disposeSpy = vi.fn().mockResolvedValue(undefined);
+    const service: VibeService = { ...makeStubService(), dispose: disposeSpy };
+    const plugin = new VibePlugin(service);
+    await plugin.init(makeContext());
+    await plugin.dispose();
+    expect(disposeSpy).toHaveBeenCalledOnce();
+  });
+
   it("init and dispose complete without throwing", async () => {
     const plugin = new VibePlugin(makeStubService());
     await expect(plugin.init(makeContext())).resolves.toBeUndefined();
