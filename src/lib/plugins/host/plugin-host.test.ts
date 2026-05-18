@@ -146,6 +146,25 @@ describe("PluginHost", () => {
     expect(artifact).toBeNull();
   });
 
+  it("generateHandoff propagates exceptions thrown by the plugin", async () => {
+    const host = new PluginHost(makeHostContext());
+    await host.load([
+      {
+        id: "throwy",
+        factory: () =>
+          makeMockPlugin({
+            id: "throwy",
+            async generateHandoff() {
+              throw new Error("plugin boom");
+            },
+          }),
+      },
+    ]);
+    await expect(host.generateHandoff("throwy:lane-a", "codex.cli")).rejects.toThrow(
+      "plugin boom",
+    );
+  });
+
   it("dispose calls each plugin's dispose", async () => {
     const disposeFn = vi.fn();
     const host = new PluginHost(makeHostContext());

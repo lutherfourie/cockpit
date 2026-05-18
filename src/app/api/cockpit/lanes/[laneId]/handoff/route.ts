@@ -2,17 +2,20 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { getPluginHost } from "@/lib/plugins/host/get-plugin-host";
+import type { HandoffTarget } from "@/lib/plugins/contract/types";
 
 export const runtime = "nodejs";
 
-const TargetSchema = z.enum([
+const HANDOFF_TARGETS = [
   "codex.web",
   "codex.cli",
   "codex.github_pr",
   "claude.code",
   "claude.web",
   "human.review",
-]);
+] as const satisfies readonly HandoffTarget[];
+
+const TargetSchema = z.enum(HANDOFF_TARGETS);
 
 export async function GET(
   request: NextRequest,

@@ -100,7 +100,10 @@ export class PluginHost {
    *
    * @param fullLaneId  Namespaced lane id of the form `<pluginId>:<laneId>`.
    * @param target      Handoff target surface.
-   * @returns The handoff artifact, or null if not found or capability missing.
+   * @returns The handoff artifact, or null if the lane is not found / plugin
+   *          is not loaded / handoff capability is missing.
+   * @throws  Any exception the plugin's generateHandoff throws is propagated
+   *          to the caller (so HTTP routes can distinguish 404 from 500).
    */
   async generateHandoff(
     fullLaneId: string,
@@ -121,7 +124,7 @@ export class PluginHost {
         target,
         error: err instanceof Error ? err.message : String(err),
       });
-      return null;
+      throw err;
     }
   }
 
