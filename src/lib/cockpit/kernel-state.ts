@@ -60,7 +60,7 @@ const INITIAL_OUTPUT: CockpitAgentOutput = {
 export function createInitialKernelState(): CockpitKernelState {
   return {
     output: createInitialOutput(),
-    mode: "focus",
+    mode: "auto",
     theme: "dim",
     generatedSurface: { status: "empty" },
     thoughtChat: [],

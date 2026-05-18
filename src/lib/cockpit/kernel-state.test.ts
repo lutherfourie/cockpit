@@ -12,7 +12,7 @@ describe("cockpit kernel state", () => {
     const state = parseKernelState("{not json");
 
     expect(state.output.currentGoal).toContain("Capture the next development move");
-    expect(state.mode).toBe("focus");
+    expect(state.mode).toBe("auto");
     expect(state.theme).toBe("dim");
     expect(state.generatedSurface.status).toBe("empty");
   });
@@ -35,7 +35,7 @@ describe("cockpit kernel state", () => {
 
     expect(state.output.currentGoal).toContain("Capture the next development move");
     expect(state.output.parkingLot).toEqual([]);
-    expect(state.mode).toBe("focus");
+    expect(state.mode).toBe("auto");
     expect(state.theme).toBe("dim");
   });
 
@@ -56,7 +56,7 @@ describe("cockpit kernel state", () => {
     );
 
     expect(state.output.currentGoal).toContain("Capture the next development move");
-    expect(state.mode).toBe("focus");
+    expect(state.mode).toBe("auto");
     expect(state.theme).toBe("dim");
   });
 

@@ -10,12 +10,16 @@ type ThoughtChatLaneProps = {
   messages: ThoughtChatMessage[];
   onAppendMessage: (message: ThoughtChatMessage) => void;
   onPromote: (text: string) => void;
+  compact?: boolean;
+  testId?: string;
 };
 
 export function ThoughtChatLane({
   messages,
   onAppendMessage,
   onPromote,
+  compact = false,
+  testId = "thought-chat",
 }: ThoughtChatLaneProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -68,7 +72,10 @@ export function ThoughtChatLane({
   }
 
   return (
-    <section data-testid="thought-chat" className="cockpit-surface border-t px-4 py-3">
+    <section
+      data-testid={testId}
+      className={compact ? "grid gap-3" : "cockpit-surface border-t px-4 py-3"}
+    >
       <button
         type="button"
         aria-expanded={isOpen}
@@ -78,7 +85,7 @@ export function ThoughtChatLane({
       >
         <span className="inline-flex items-center gap-2">
           <MessageSquareText className="size-4" />
-          Thought Chat
+          Assistant / Thought Chat
         </span>
         <ChevronDown
           className={[

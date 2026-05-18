@@ -9,9 +9,9 @@ import {
 } from "./schema";
 
 describe("cockpit schema", () => {
-  it("defaults mode to focus", () => {
+  it("defaults mode to auto", () => {
     const parsed = AgentInputSchema.parse({ message: "ship this" });
-    expect(parsed.mode).toBe("focus");
+    expect(parsed.mode).toBe("auto");
   });
 
   it("accepts all configured providers", () => {

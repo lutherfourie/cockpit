@@ -1,12 +1,13 @@
 import { z } from "zod";
 
 export const COCKPIT_MODES = [
+  "auto",
   "clarify",
   "plan",
   "focus",
   "recover",
-  "handoff",
   "review",
+  "handoff",
 ] as const;
 
 export const CockpitModeSchema = z.enum(COCKPIT_MODES);
@@ -14,7 +15,7 @@ export const CockpitModeSchema = z.enum(COCKPIT_MODES);
 export const AgentInputSchema = z.object({
   message: z.string().trim().min(1, "Message is required."),
   sessionId: z.string().uuid().optional(),
-  mode: CockpitModeSchema.default("focus"),
+  mode: CockpitModeSchema.default("auto"),
 });
 
 export const CockpitProviderSchema = z.enum([
@@ -120,6 +121,7 @@ export function createFallbackCockpitOutput({
   ).slice(0, 160);
 
   const modeNextAction: Record<CockpitMode, string> = {
+    auto: "Do the smallest concrete step that moves the active goal forward.",
     clarify: "Rewrite the messy input as one question the assistant must answer next.",
     plan: "Pick the first repo-visible slice and define the proof for that slice only.",
     focus: "Do the smallest concrete step that moves the active goal forward.",
