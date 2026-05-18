@@ -22,8 +22,13 @@ test("lane inventory panel lists fixture lane and generates handoff", async ({
     page.getByRole("main").getByRole("heading", { name: /Lanes \(/ }),
   ).toBeVisible({ timeout: 10_000 });
 
-  // The fixture lane name is "sample-feedback-triage".
-  await expect(page.getByText("sample-feedback-triage")).toBeVisible();
+  // The fixture lane name is "sample-feedback-triage". Use the heading role
+  // explicitly because the accessible label on the handoff target select
+  // ("Handoff target for vibe:sample-feedback-triage") also contains the text,
+  // and Playwright's strict mode rejects multiple matches.
+  await expect(
+    page.getByRole("heading", { name: "sample-feedback-triage" }),
+  ).toBeVisible();
 
   // Scope to the lane card and pick a non-default target so the dropdown
   // change handler is genuinely exercised. The default in HandoffControls
