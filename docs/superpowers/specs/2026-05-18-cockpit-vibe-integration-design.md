@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Date | 2026-05-18 |
-| Status | **DRAFT** — partial. See per-section status headers. |
+| Status | **DRAFT** — Sections 1 & 2 approved; Sections 3-10 outline-only. Approved enough to begin Phase 1 implementation. See per-section status headers. |
 | Author | Luther (brainstorming session) |
 | Brainstorming partner | Claude (via Superpowers brainstorming skill) |
 | Sibling artifact | `lutherfourie/vibe` PR #6 — deepagents POC sandbox |
@@ -129,7 +129,7 @@ Both implement the same interface. Switching is one env var.
 
 ## Section 2 — `CockpitPlugin` contract
 
-**Status: PRESENTED, AWAITING REVIEW 2026-05-18**
+**Status: APPROVED 2026-05-18** (with the three open questions resolved — see "Resolutions" at the end of this section)
 
 The interface every plugin (Vibe first, others later) implements. Lives in Cockpit at `src/lib/cockpit/plugin/types.ts`.
 
@@ -253,11 +253,36 @@ export type HandoffTarget =
 - **Host-mediated memory** keeps RLS intact: plugin doesn't get raw Supabase access, only the namespaced `HostMemoryApi` (more in Section 7).
 - **AbortSignal on `runLane`** is the cancellation primitive — Cockpit's "Cancel run" button just aborts.
 
-### Open questions for Section 2 (must be resolved before approval)
+### Resolutions
 
-- Should plugins also carry a JSON manifest (separate from the TS class) for static discovery / display in a plugin browser UI? Or is the TS class's exported metadata enough for v0?
-- Should `PluginHostContext.settings` be reactive (plugin re-inits on settings change) or read-once-at-init?
-- What should `LaneRunInput` actually contain? At minimum: a human message + override env vars. Needs explicit typing.
+These were the three open questions; resolved during the 2026-05-18 review pass.
+
+**1. JSON manifest separate from the TS class?** No. The TS class's static metadata (`id`, `displayName`, `version`, `description`, `capabilities`) is enough for v0. A separate JSON manifest can be added later if/when a plugin browser UI demands it, but YAGNI for now.
+
+**2. Is `PluginHostContext.settings` reactive or read-at-init?** Read-at-init. Settings are snapshotted into the plugin context when `init(host)` is called. Settings changes are handled via the explicit `/api/cockpit/plugins/:id/reload` endpoint already in the lifecycle (Section 2.3). Reactive-at-runtime settings would hide lifecycle issues.
+
+**3. What's in `LaneRunInput`?** Concrete shape:
+
+```typescript
+export interface LaneRunInput {
+  /** The human message / user instruction for this lane run. Required. */
+  userMessage: string;
+
+  /** Optional overrides applied for this single run only. */
+  overrides?: {
+    /** Override the lane's default model (e.g., switch from cerebras to anthropic). */
+    model?: string;
+
+    /** Additional env vars merged into the lane's environment for this run. */
+    envVars?: Record<string, string>;
+
+    /** Override the working directory the lane resolves paths against. */
+    cwd?: string;
+  };
+}
+```
+
+This maps directly to what the sandbox prototype's `run-translated.ts` already consumes — `userMessage` from CLI arg, overrides not yet supported but the shape leaves room. Adding fields is additive; removing requires a contract version bump (Section 8).
 
 ---
 
