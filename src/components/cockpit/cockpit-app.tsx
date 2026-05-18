@@ -1289,7 +1289,7 @@ function LowerSurface({
   if (surface === "lanes") {
     return (
       <section
-        className="cockpit-panel border p-0"
+        className="cockpit-panel cockpit-panel-lanes border p-0"
         data-testid="lanes"
       >
         <LaneInventoryPanel />
