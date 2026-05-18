@@ -2,7 +2,14 @@ import { expect, test } from "@playwright/test";
 
 test("lane inventory panel lists fixture lane and generates handoff", async ({
   page,
-}) => {
+}, testInfo) => {
+  // The Lanes rail entry is hidden on mobile viewports (cockpit-rail is
+  // `hidden ... lg:block`). Mobile entry to the Lanes panel is Phase 2 work.
+  test.skip(
+    testInfo.project.name === "mobile-chrome",
+    "Lanes rail is hidden below lg breakpoint; mobile entry is Phase 2",
+  );
+
   await page.goto("/");
 
   // The cockpit-app integration added a "Lanes" rail button that switches the
