@@ -8,6 +8,7 @@ import type {
   LaneRunInput,
   LaneSummary,
   PluginCapability,
+  TodoItem,
 } from "./types";
 
 describe("plugin contract types", () => {
@@ -48,6 +49,16 @@ describe("plugin contract types", () => {
       { type: "error", message: "boom", recoverable: false },
     ];
     expect(events.map((e) => e.type)).toEqual(["start", "final", "error"]);
+  });
+
+  it("TodoItem fits inside the LaneEvent todo variant", () => {
+    const item: TodoItem = { text: "write tests", done: false };
+    const event: LaneEvent = { type: "todo", items: [item] };
+    expect(event.type).toBe("todo");
+    if (event.type === "todo") {
+      expect(event.items[0].text).toBe("write tests");
+      expect(event.items[0].done).toBe(false);
+    }
   });
 
   it("LaneRunInput requires userMessage and accepts optional overrides", () => {

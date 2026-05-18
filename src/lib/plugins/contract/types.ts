@@ -22,12 +22,23 @@ export interface PluginLogger {
 }
 
 /**
+ * A structured event a plugin emits via the host-provided event sink.
+ * Persistence / rendering is the host's responsibility; the plugin only
+ * tags and submits.
+ */
+export interface PluginEvent {
+  kind: string;
+  pluginId: string;
+  payload: unknown;
+}
+
+/**
  * Structured event sink the plugin can emit telemetry / activity events into.
  * The host decides how to persist or render them (typically piggybacks on
  * cockpit_assistant_events — see spec Section 5).
  */
 export interface HostEventSink {
-  emit(event: { kind: string; pluginId: string; payload: unknown }): void;
+  emit(event: PluginEvent): void;
 }
 
 /**
@@ -80,6 +91,7 @@ export interface LaneRunInput {
   };
 }
 
+/** A single to-do item emitted by the `todo` LaneEvent variant during lane execution. */
 export interface TodoItem {
   text: string;
   done: boolean;
@@ -115,8 +127,12 @@ export interface HandoffArtifact {
 }
 
 /**
- * Memory bridge accessor — included for spec completeness; Phase 1 plugins
- * MAY omit it (capability not yet enabled). Phase 4 will flesh this out.
+ * Memory capability hook exposed BY the plugin TO Cockpit.
+ *
+ * Direction: plugin → host (contrast with `HostMemoryApi`, which is host → plugin).
+ * Phase 1 plugins MAY omit this — `CockpitPlugin.memoryBridge` is optional.
+ * Full bridge semantics (sync direction, conflict resolution, namespacing)
+ * are deferred to Phase 4 per spec Section 7.
  */
 export interface PluginMemoryBridge {
   read(key: string): Promise<string | null>;
