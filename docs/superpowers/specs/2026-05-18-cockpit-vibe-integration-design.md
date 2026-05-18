@@ -207,7 +207,7 @@ export interface LaneSummary {
   reads: string[];
   owns: string[];
   target?: string;            // surface hint, e.g. "codex.local"
-  approvalGate?: string;
+  approval?: string;          // approval gate name, e.g. "human.before_commit"
   verify?: string[];
   status: "ready" | "running" | "error";
   lastRunAt?: string;         // ISO timestamp
