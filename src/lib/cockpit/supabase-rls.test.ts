@@ -10,6 +10,7 @@ const publicTables = [
   "parking_lot_items",
   "handoffs",
   "cockpit_chat_messages",
+  "cockpit_plugin_memory",
 ];
 
 const appendOnlyTables = ["cockpit_assistant_events"];
