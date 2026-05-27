@@ -50,3 +50,15 @@ The cockpit has a **model-independent kernel**. Stable panels (Current Goal, Nex
 - **Bounded chat**: the thought-forming chat lane is intentionally bounded — don't expand it into an unbounded runtime takeover.
 - **Test scope**: vitest config only globs `src/**/*.test.{ts,tsx}`. Tests outside `src/` won't run.
 - **E2E web server**: Playwright spawns `pnpm dev --hostname 127.0.0.1 --port 3000` with `reuseExistingServer: true`. Don't start another dev server on 3000 first or trace/baseURL drifts.
+
+## Local dev-assist infra
+
+Two helpers ship with the repo. Everything under `.claude/` is personal and gitignored — wire these into your own `.claude/settings.json` if you want them automatic.
+
+- **Snapshot** — `scripts/cockpit_snapshot.ps1` prints git status, tool versions, local Supabase port state (54321/54322/54323), Next dev-server state (3000), key `.env.local` values, and `.next`/tsbuildinfo recency. Run on demand, or attach to a personal SessionStart hook:
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts\cockpit_snapshot.ps1
+  ```
+
+- **Project MCP** — `.mcp.json` defines `cockpit-postgres`, targeting local Supabase Postgres at `postgresql://postgres:postgres@127.0.0.1:54322/postgres` (the standard local-dev superuser). Run `pnpm exec supabase start` first; Claude Code prompts to approve the server on first use.
