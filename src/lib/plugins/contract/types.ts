@@ -42,15 +42,30 @@ export interface HostEventSink {
 }
 
 /**
- * Cockpit-mediated memory API. Plugin writes are namespaced under the
- * plugin id (host enforces). Phase 1 is read-mostly; full bridge lands in
- * Phase 4 per spec Section 7.
+ * Cockpit-mediated, per-plugin memory API (spec §7.7). The host binds the
+ * `<plugin.id>` namespace and injects this at init; the plugin supplies only
+ * the bare key. Last-write-wins per (user, namespace, key). No-ops when
+ * Supabase is unconfigured or no user is signed in.
  */
 export interface HostMemoryApi {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<void>;
-  list(prefix?: string): Promise<string[]>;
+  /** Upsert a value under the host-injected namespace. */
+  set(key: string, value: unknown): Promise<void>;
+  /** Read back a value the plugin previously wrote, or undefined. */
+  get(key: string): Promise<unknown | undefined>;
+  /** List entry metadata (not values) under this namespace, newest-first. `prefix` filters keys. */
+  list(prefix?: string): Promise<MemoryEntryMeta[]>;
+  /** Delete one entry. Idempotent. */
   delete(key: string): Promise<void>;
+}
+
+/** Metadata for one plugin-memory entry (spec §7.7). */
+export interface MemoryEntryMeta {
+  /** Bare key, namespace stripped. */
+  key: string;
+  /** ISO timestamp. */
+  createdAt: string;
+  /** ISO timestamp. */
+  updatedAt: string;
 }
 
 export interface PluginHostContext {
@@ -128,16 +143,26 @@ export interface HandoffArtifact {
 }
 
 /**
- * Memory capability hook exposed BY the plugin TO Cockpit.
- *
- * Direction: plugin → host (contrast with `HostMemoryApi`, which is host → plugin).
- * Phase 1 plugins MAY omit this — `CockpitPlugin.memoryBridge` is optional.
- * Full bridge semantics (sync direction, conflict resolution, namespacing)
- * are deferred to Phase 4 per spec Section 7.
+ * Optional capability hook exposed BY the plugin TO Cockpit (host→plugin
+ * direction, spec §7.7). Most plugins won't override the defaults.
  */
 export interface PluginMemoryBridge {
-  read(key: string): Promise<string | null>;
-  write(key: string, value: string): Promise<void>;
+  /** Host invokes on "refresh from plugin"; plugin re-emits anything that belongs in Cockpit. Default: no-op. */
+  refresh?(): Promise<void>;
+  /** Host invokes BEFORE deleting a key from the UI; return false to refuse. Default: allow. */
+  beforeDelete?(key: string): Promise<boolean>;
+}
+
+/**
+ * Service-layer handle (spec §7.7). Always present on VibeService.memory; a
+ * write before the host wires a HostMemoryApi throws (loud failure), reads
+ * are inert. Added to the VibeService interface in the plugin-side task.
+ */
+export interface VibeMemoryHandle {
+  set(key: string, value: unknown): Promise<void>;
+  get(key: string): Promise<unknown | undefined>;
+  list(prefix?: string): Promise<MemoryEntryMeta[]>;
+  delete(key: string): Promise<void>;
 }
 
 export interface CockpitPlugin {
