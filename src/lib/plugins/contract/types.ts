@@ -143,8 +143,10 @@ export interface HandoffArtifact {
 }
 
 /**
- * Optional capability hook exposed BY the plugin TO Cockpit (host→plugin
- * direction, spec §7.7). Most plugins won't override the defaults.
+ * Optional capability hook the plugin exposes to Cockpit (spec §7.7):
+ * invoked BY the host, implemented BY the plugin (contrast HostMemoryApi,
+ * which the host implements for the plugin). Most plugins won't override
+ * the defaults.
  */
 export interface PluginMemoryBridge {
   /** Host invokes on "refresh from plugin"; plugin re-emits anything that belongs in Cockpit. Default: no-op. */
