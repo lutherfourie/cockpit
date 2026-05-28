@@ -1,0 +1,40 @@
+# Portable production run of Cockpit.
+#
+# Dev stays native (scripts/cockpit_up.ps1). This compose builds + runs the
+# production image — the "run anywhere" artifact.
+#
+# Supabase is intentionally NOT defined here: the Supabase CLI already owns its
+# own containers (`pnpm exec supabase start`). This service just talks to one.
+#
+# Networking caveat for the LOCAL CLI Supabase:
+#   - NEXT_PUBLIC_SUPABASE_URL is baked at BUILD time and used by the BROWSER,
+#     which runs on the host -> http://127.0.0.1:54321 is correct there.
+#   - Server-side calls from INSIDE this container can't reach the host on
+#     127.0.0.1; they need host.docker.internal (mapped below).
+#   For a clean prod deploy, point both at a real hosted Supabase URL instead.
+
+services:
+  cockpit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Baked into the client bundle. For local Supabase the browser uses the host.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://127.0.0.1:54321}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}
+    image: cockpit:local
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-only runtime config (never baked into the image).
+      COCKPIT_LLM_PROVIDER: ${COCKPIT_LLM_PROVIDER:-local}
+      CEREBRAS_MODEL: ${CEREBRAS_MODEL:-}
+      CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      COCKPIT_PLUGINS: ${COCKPIT_PLUGINS:-}
+      COCKPIT_PLUGIN_VIBE_ROOTS: ${COCKPIT_PLUGIN_VIBE_ROOTS:-}
+    extra_hosts:
+      # Lets server-side code reach host services (e.g. local Supabase) at
+      # host.docker.internal when needed.
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

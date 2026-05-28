@@ -16,6 +16,8 @@
 /playwright-report/
 /.playwright-mcp/
 /.superpowers/
+# local verification screenshots
+sp0-*.png
 
 # next.js
 /.next/
