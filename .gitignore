@@ -18,6 +18,7 @@
 /.superpowers/
 # local verification screenshots
 sp0-*.png
+agent-*.png
 
 # next.js
 /.next/
