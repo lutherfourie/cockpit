@@ -2,6 +2,7 @@ import {
   COCKPIT_MODES,
   CockpitAgentOutputSchema,
   MAX_PARKING_LOT_ITEMS,
+  normalizeCockpitOutput,
   type CockpitAgentOutput,
   type CockpitMode,
 } from "./schema";
@@ -150,18 +151,24 @@ export function reduceKernelState(
   action: KernelAction,
 ): CockpitKernelState {
   switch (action.type) {
-    case "setOutput":
+    case "setOutput": {
+      const output = parseCockpitOutput(action.output);
+      if (!output) {
+        return state;
+      }
+
       return {
         ...state,
         output: {
-          ...action.output,
+          ...output,
           parkingLot: mergeParkingLot(
             state.output.parkingLot,
-            action.output.parkingLot,
+            output.parkingLot,
           ),
         },
         sessionId: action.sessionId ?? state.sessionId,
       };
+    }
     case "setMode":
       return { ...state, mode: action.mode };
     case "setTheme":
@@ -290,7 +297,7 @@ function isCockpitOutput(value: unknown): value is CockpitAgentOutput {
 
 function parseCockpitOutput(value: unknown): CockpitAgentOutput | undefined {
   const parsed = CockpitAgentOutputSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? normalizeCockpitOutput(parsed.data) : undefined;
 }
 
 function isValidPersistedKernelState(
