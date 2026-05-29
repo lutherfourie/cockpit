@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import { buildAgentMessages, type AgentChatMessage } from "@/lib/cockpit/assistant-persona";
 
 // Streams a warm assistant turn by proxying the Vibe daemon's /v1/turn SSE.
@@ -9,11 +11,27 @@ export const runtime = "nodejs";
 
 const DAEMON_URL = process.env.VIBE_DAEMON_URL ?? "http://127.0.0.1:8787";
 const PROVIDER = process.env.AGENT_PROVIDER ?? "cerebras";
+const MAX_AGENT_MESSAGES = 24;
+const MAX_AGENT_MESSAGE_CHARS = 4000;
+const VALIDATION_ERROR =
+  "Invalid agent turn input. Send 1-24 user/assistant messages under 4000 characters each.";
 
-type TurnBody = {
-  messages?: AgentChatMessage[];
-  sessionId?: string;
-};
+const TurnBodySchema = z
+  .object({
+    messages: z
+      .array(
+        z
+          .object({
+            role: z.enum(["user", "assistant"]),
+            content: z.string().trim().min(1).max(MAX_AGENT_MESSAGE_CHARS),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(MAX_AGENT_MESSAGES),
+    sessionId: z.string().trim().min(1).max(128).optional(),
+  })
+  .strict();
 
 function sseError(message: string): Response {
   const body = `data: ${JSON.stringify({ kind: "error", err: message })}\n\ndata: ${JSON.stringify({ kind: "done" })}\n\n`;
@@ -24,21 +42,19 @@ function sseError(message: string): Response {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let parsed: TurnBody;
+  let body: unknown;
   try {
-    parsed = (await request.json()) as TurnBody;
+    body = await request.json();
   } catch {
     return sseError("Could not read the message you sent.");
   }
 
-  const history = (parsed.messages ?? []).filter(
-    (m): m is AgentChatMessage =>
-      !!m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
-  );
-  if (history.length === 0) {
-    return sseError("There's nothing to respond to yet — say something and I'm here.");
+  const parsed = TurnBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return sseError(VALIDATION_ERROR);
   }
 
+  const history: AgentChatMessage[] = parsed.data.messages;
   const messages = buildAgentMessages(history);
 
   let daemonResponse: Response;
@@ -46,7 +62,7 @@ export async function POST(request: Request): Promise<Response> {
     daemonResponse = await fetch(`${DAEMON_URL}/v1/turn`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: PROVIDER, sessionId: parsed.sessionId, messages }),
+      body: JSON.stringify({ provider: PROVIDER, sessionId: parsed.data.sessionId, messages }),
       signal: request.signal,
     });
   } catch {
