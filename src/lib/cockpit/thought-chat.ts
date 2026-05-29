@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { CockpitProviderSchema, type CockpitProvider } from "./schema";
 
-const MAX_HISTORY_MESSAGES = 12;
+export const THOUGHT_CHAT_HISTORY_LIMIT = 12;
 
 export const ThoughtChatRoleSchema = z.enum(["user", "assistant"]);
 
@@ -13,7 +13,10 @@ export const ThoughtChatHistoryMessageSchema = z.object({
 
 export const ThoughtChatInputSchema = z.object({
   message: z.string().trim().min(1, "Message is required."),
-  history: z.array(ThoughtChatHistoryMessageSchema).default([]),
+  history: z.preprocess(
+    limitHistoryInput,
+    z.array(ThoughtChatHistoryMessageSchema).default([]),
+  ),
 });
 
 export const ThoughtChatAssistantMessageSchema = z.object({
@@ -42,7 +45,7 @@ export async function runThoughtChat(rawInput: unknown): Promise<ThoughtChatResu
   readProvider();
 
   const compactMessage = compactText(input.message);
-  const recentHistory = input.history.slice(-MAX_HISTORY_MESSAGES);
+  const recentHistory = limitHistory(input.history);
   const lastAssistant = [...recentHistory]
     .reverse()
     .find((message) => message.role === "assistant");
@@ -95,6 +98,20 @@ function buildLocalAssistantText(
 
 function compactText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function limitHistory(
+  history: ThoughtChatHistoryMessage[],
+): ThoughtChatHistoryMessage[] {
+  return history.slice(-THOUGHT_CHAT_HISTORY_LIMIT);
+}
+
+function limitHistoryInput(value: unknown): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value.slice(-THOUGHT_CHAT_HISTORY_LIMIT);
 }
 
 function readProvider(): CockpitProvider {
