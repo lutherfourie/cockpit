@@ -30,5 +30,11 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "apps/browser-extension",
+    "apps/browser-extension/.output",
+    "apps/browser-extension/.wxt",
+    "apps/browser-extension/dist"
+  ]
 }

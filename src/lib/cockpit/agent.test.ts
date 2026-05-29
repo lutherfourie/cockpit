@@ -112,6 +112,7 @@ describe("cockpit agent", () => {
 function createMockStore(): CockpitMemoryStore {
   return {
     loadSessionState: vi.fn(async () => null),
+    loadLatestSessionState: vi.fn(async () => null),
     saveSessionState: vi.fn(async () => ({
       sessionId: "00000000-0000-4000-8000-000000000000",
       saved: true,

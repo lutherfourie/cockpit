@@ -1,0 +1,27 @@
+{
+  "name": "@cockpit/browser-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build -b chrome",
+    "test": "wxt prepare && vitest run",
+    "test:watch": "wxt prepare && vitest"
+  },
+  "dependencies": {
+    "@cockpit/contracts": "workspace:*",
+    "@supabase/supabase-js": "^2.105.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@wxt-dev/module-react": "^1.2.2",
+    "typescript": "^5",
+    "vitest": "^4.1.6",
+    "wxt": "^0.20.26"
+  }
+}
