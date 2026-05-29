@@ -7,15 +7,8 @@ import {
   type AppendAssistantEventInput,
   type AssistantEvent,
 } from "@/lib/cockpit/assistant-events";
-import {
-  createSupabaseServerClient,
-  isSupabaseConfigured,
-} from "@/lib/cockpit/supabase-server";
-import {
-  NullCockpitMemoryStore,
-  SupabaseCockpitMemoryStore,
-  type CockpitMemoryStore,
-} from "@/lib/cockpit/storage";
+import { createCockpitMemoryStoreForRequest } from "@/lib/cockpit/auth-store";
+import type { CockpitMemoryStore } from "@/lib/cockpit/storage";
 import { runThoughtChat, type ThoughtChatHistoryMessage } from "@/lib/cockpit/thought-chat";
 
 export const runtime = "nodejs";
@@ -27,7 +20,7 @@ const AssistantTurnRequestSchema = z.object({
 
 export async function GET(request: Request) {
   try {
-    const store = await createStore();
+    const store = await createCockpitMemoryStoreForRequest(request);
     const { searchParams } = new URL(request.url);
     const sessionId = readSessionId(searchParams.get("sessionId"));
     const events = await store.loadAssistantEvents?.(sessionId);
@@ -62,7 +55,7 @@ export async function POST(request: Request) {
       }
 
       const input = parsed.data;
-      const store = await createStore();
+      const store = await createCockpitMemoryStoreForRequest(request);
       const priorEvents = (await store.loadAssistantEvents?.(input.sessionId)) ?? [];
       const userEvent = await appendTimelineEvent(store, {
         sessionId: input.sessionId,
@@ -116,7 +109,7 @@ export async function POST(request: Request) {
     }
 
     const eventInput = parsed.data;
-    const store = await createStore();
+    const store = await createCockpitMemoryStoreForRequest(request);
     await applyAssistantActionSideEffect(store, eventInput);
     const event = await appendTimelineEvent(store, eventInput);
 
@@ -135,28 +128,6 @@ async function readRequestJson(request: Request): Promise<unknown> {
   } catch {
     return undefined;
   }
-}
-
-async function createStore(): Promise<CockpitMemoryStore> {
-  if (!isSupabaseConfigured()) {
-    return new NullCockpitMemoryStore("Supabase environment variables are not set.");
-  }
-
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    return new NullCockpitMemoryStore("Supabase server client is unavailable.");
-  }
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return new NullCockpitMemoryStore("No authenticated Supabase user is present.");
-  }
-
-  return new SupabaseCockpitMemoryStore(supabase, user.id);
 }
 
 async function appendTimelineEvent(

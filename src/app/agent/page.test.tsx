@@ -135,7 +135,9 @@ describe("AgentPage", () => {
       });
     }
 
-    const lastCall = fetchMock.mock.calls.at(-1);
+    const lastCall = fetchMock.mock.calls.at(-1) as unknown as
+      | [string, RequestInit]
+      | undefined;
     expect(lastCall).toBeTruthy();
     const requestBody = JSON.parse(String(lastCall?.[1]?.body)) as {
       messages: Array<{ role: "user" | "assistant"; content: string }>;

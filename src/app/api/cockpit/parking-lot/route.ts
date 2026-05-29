@@ -1,15 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import {
-  createSupabaseServerClient,
-  isSupabaseConfigured,
-} from "@/lib/cockpit/supabase-server";
-import {
-  NullCockpitMemoryStore,
-  SupabaseCockpitMemoryStore,
-  type CockpitMemoryStore,
-} from "@/lib/cockpit/storage";
+import { createCockpitMemoryStoreForRequest } from "@/lib/cockpit/auth-store";
 
 export const runtime = "nodejs";
 
@@ -23,7 +15,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const sessionId = url.searchParams.get("sessionId") ?? undefined;
 
-  const store = await createStore();
+  const store = await createCockpitMemoryStoreForRequest(request);
   const items = store.loadParkingLotItems
     ? await store.loadParkingLotItems(sessionId)
     : [];
@@ -45,30 +37,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const store = await createStore();
+  const store = await createCockpitMemoryStoreForRequest(request);
   const result = await store.addParkingLotItem(parsed.data);
 
   return NextResponse.json(result);
-}
-
-async function createStore(): Promise<CockpitMemoryStore> {
-  if (!isSupabaseConfigured()) {
-    return new NullCockpitMemoryStore("Supabase environment variables are not set.");
-  }
-
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    return new NullCockpitMemoryStore("Supabase server client is unavailable.");
-  }
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return new NullCockpitMemoryStore("No authenticated Supabase user is present.");
-  }
-
-  return new SupabaseCockpitMemoryStore(supabase, user.id);
 }

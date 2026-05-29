@@ -99,7 +99,7 @@ describe("/api/agent/turn", () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("http://127.0.0.1:8787/v1/turn");
     expect(init.method).toBe("POST");
     const body = JSON.parse(String(init.body)) as {

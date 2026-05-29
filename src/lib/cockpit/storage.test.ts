@@ -209,6 +209,7 @@ describe("cockpit memory storage", () => {
         type: "assistant_message",
         role: "assistant",
         content: "hello",
+        metadata: {},
       }),
     ).resolves.toEqual({ saved: false, reason: "No signed-in user." });
     await expect(

@@ -236,7 +236,6 @@ async function runCodexRunner(
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    let timer: ReturnType<typeof setTimeout>;
     const resolveOnce = (value: T) => {
       if (settled) {
         return;
@@ -254,7 +253,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
       reject(error);
     };
 
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       rejectOnce(
         new CodexExecError(
           "timeout",

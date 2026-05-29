@@ -2,20 +2,13 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { runCockpitAgent } from "../../../lib/cockpit/agent";
+import { runCockpitAgent } from "@/lib/cockpit/agent";
+import { createCockpitMemoryStoreForRequest } from "@/lib/cockpit/auth-store";
 import {
   AgentInputSchema,
   type CockpitPersistence,
   type CockpitTurnResult,
-} from "../../../lib/cockpit/schema";
-import {
-  createSupabaseServerClient,
-  isSupabaseConfigured,
-} from "../../../lib/cockpit/supabase-server";
-import {
-  NullCockpitMemoryStore,
-  SupabaseCockpitMemoryStore,
-} from "../../../lib/cockpit/storage";
+} from "@/lib/cockpit/schema";
 
 export const runtime = "nodejs";
 
@@ -61,7 +54,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const store = await createStore();
+  const store = await createCockpitMemoryStoreForRequest(request);
   const result = await runCockpitAgent(parsed.data, { store });
 
   return NextResponse.json(normalizeTurnResult(result, parsed.data.sessionId));
@@ -104,26 +97,4 @@ function normalizeTurnResult(
 function readValidSessionId(body: unknown): string | undefined {
   const parsed = SessionIdEnvelopeSchema.safeParse(body);
   return parsed.success ? parsed.data.sessionId : undefined;
-}
-
-async function createStore() {
-  if (!isSupabaseConfigured()) {
-    return new NullCockpitMemoryStore("Supabase environment variables are not set.");
-  }
-
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    return new NullCockpitMemoryStore("Supabase server client is unavailable.");
-  }
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return new NullCockpitMemoryStore("No authenticated Supabase user is present.");
-  }
-
-  return new SupabaseCockpitMemoryStore(supabase, user.id);
 }

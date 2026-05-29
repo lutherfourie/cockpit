@@ -1,14 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { createCockpitMemoryStoreForRequest } from "@/lib/cockpit/auth-store";
 import { ThoughtChatInputSchema, runThoughtChat } from "@/lib/cockpit/thought-chat";
-import {
-  createSupabaseServerClient,
-  isSupabaseConfigured,
-} from "@/lib/cockpit/supabase-server";
-import {
-  NullCockpitMemoryStore,
-  SupabaseCockpitMemoryStore,
-} from "@/lib/cockpit/storage";
 
 export const runtime = "nodejs";
 
@@ -25,10 +18,10 @@ export async function POST(request: Request) {
 
   try {
     const input = parsed.data;
-    const store = await createStore();
+    const store = await createCockpitMemoryStoreForRequest(request);
     const sessionId = readSessionId(body);
-    const storedHistory = await store.loadChatMessages(sessionId);
-    await store.saveChatMessage({
+    const storedHistory = (await store.loadChatMessages?.(sessionId)) ?? [];
+    await store.saveChatMessage?.({
       sessionId,
       role: "user",
       content: input.message,
@@ -37,7 +30,7 @@ export async function POST(request: Request) {
       ...input,
       history: storedHistory.length > 0 ? storedHistory : input.history,
     });
-    await store.saveChatMessage({
+    await store.saveChatMessage?.({
       sessionId,
       role: result.message.role,
       content: result.message.content,
@@ -58,28 +51,6 @@ async function readRequestJson(request: Request): Promise<unknown> {
   } catch {
     return undefined;
   }
-}
-
-async function createStore() {
-  if (!isSupabaseConfigured()) {
-    return new NullCockpitMemoryStore("Supabase environment variables are not set.");
-  }
-
-  const supabase = await createSupabaseServerClient();
-  if (!supabase) {
-    return new NullCockpitMemoryStore("Supabase server client is unavailable.");
-  }
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) {
-    return new NullCockpitMemoryStore("No authenticated Supabase user is present.");
-  }
-
-  return new SupabaseCockpitMemoryStore(supabase, user.id);
 }
 
 function readSessionId(body: unknown): string | undefined {
