@@ -1,6 +1,7 @@
 import {
   COCKPIT_MODES,
   CockpitAgentOutputSchema,
+  MAX_PARKING_LOT_ITEMS,
   type CockpitAgentOutput,
   type CockpitMode,
 } from "./schema";
@@ -51,6 +52,7 @@ export type KernelAction =
   | { type: "setMode"; mode: CockpitMode }
   | { type: "setTheme"; theme: CockpitTheme }
   | { type: "park"; content: string }
+  | { type: "hydrateParkingLot"; items: string[] }
   | { type: "appendThoughtMessage"; message: ThoughtChatMessage }
   | { type: "setGeneratedSurface"; surface: GeneratedSurface }
   | {
@@ -62,7 +64,6 @@ export type KernelAction =
 
 export const COCKPIT_STATE_STORAGE_KEY = "cockpit:v1:state";
 
-const MAX_PARKING_ITEMS = 5;
 const MAX_ASSISTANT_EVENTS = 40;
 const THEMES = ["dim", "light"] as const;
 
@@ -152,7 +153,13 @@ export function reduceKernelState(
     case "setOutput":
       return {
         ...state,
-        output: action.output,
+        output: {
+          ...action.output,
+          parkingLot: mergeParkingLot(
+            state.output.parkingLot,
+            action.output.parkingLot,
+          ),
+        },
         sessionId: action.sessionId ?? state.sessionId,
       };
     case "setMode":
@@ -169,12 +176,18 @@ export function reduceKernelState(
         ...state,
         output: {
           ...state.output,
-          parkingLot: [...state.output.parkingLot, content].slice(
-            -MAX_PARKING_ITEMS,
-          ),
+          parkingLot: mergeParkingLot(state.output.parkingLot, [content]),
         },
       };
     }
+    case "hydrateParkingLot":
+      return {
+        ...state,
+        output: {
+          ...state.output,
+          parkingLot: mergeParkingLot(state.output.parkingLot, action.items),
+        },
+      };
     case "appendThoughtMessage":
       return {
         ...state,
@@ -217,6 +230,27 @@ export function reduceKernelState(
 
 export function promoteThoughtMessage(message: ThoughtChatMessage): string {
   return message.content.replace(/\s+/g, " ").trim();
+}
+
+// Parking-lot items are durable scratch notes the user explicitly chose to keep.
+// Assistant turns emit their own parkingLot (often empty), so a reducer must never
+// replace the existing list — it unions new items in, deduped and order-preserving,
+// so a model turn can add to the lot but can never silently erase it.
+function mergeParkingLot(existing: string[], incoming: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of [...existing, ...incoming]) {
+    const compact = item.replace(/\s+/g, " ").trim();
+    if (!compact || seen.has(compact)) {
+      continue;
+    }
+    seen.add(compact);
+    result.push(compact);
+    if (result.length >= MAX_PARKING_LOT_ITEMS) {
+      break;
+    }
+  }
+  return result;
 }
 
 function createInitialOutput(): CockpitAgentOutput {

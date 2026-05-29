@@ -29,7 +29,6 @@ import {
 } from "lucide-react";
 
 import {
-  COCKPIT_MODES,
   type CockpitAgentOutput,
   type CockpitMode,
   type CockpitPersistence,
@@ -417,6 +416,51 @@ export function CockpitApp() {
   }, [sessionId]);
 
   useEffect(() => {
+    let isCurrent = true;
+    const controller = new AbortController();
+    const query = sessionId
+      ? `?sessionId=${encodeURIComponent(sessionId)}`
+      : "";
+
+    fetch(`/api/cockpit/parking-lot${query}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          return [];
+        }
+
+        const payload = (await response.json()) as { items?: unknown };
+        return Array.isArray(payload.items)
+          ? payload.items.filter(
+              (item): item is string => typeof item === "string",
+            )
+          : [];
+      })
+      .then((items) => {
+        if (!isCurrent || items.length === 0) {
+          return;
+        }
+
+        updatePersistedCockpitState((current) => ({
+          ...reduceKernelState(current, {
+            type: "hydrateParkingLot",
+            items,
+          }),
+          persistence: current.persistence,
+        }));
+      })
+      .catch((loadError) => {
+        if (loadError instanceof DOMException && loadError.name === "AbortError") {
+          return;
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+      controller.abort();
+    };
+  }, [sessionId]);
+
+  useEffect(() => {
     if (!sessionId) {
       return;
     }
@@ -531,6 +575,16 @@ export function CockpitApp() {
     }
   }
 
+  function persistParkedItem(content: string) {
+    void fetch("/api/cockpit/parking-lot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content, sessionId, source: "manual" }),
+    }).catch(() => {
+      // Durable persistence is best-effort; the local cache already retains it.
+    });
+  }
+
   function saveParkingLotItem() {
     const trimmed = parkingDraft.trim();
     if (!trimmed) {
@@ -541,6 +595,7 @@ export function CockpitApp() {
       ...reduceKernelState(current, { type: "park", content: trimmed }),
       persistence: current.persistence,
     }));
+    persistParkedItem(trimmed);
     setParkingDraft("");
   }
 
@@ -554,6 +609,7 @@ export function CockpitApp() {
       ...reduceKernelState(current, { type: "park", content: trimmed }),
       persistence: current.persistence,
     }));
+    persistParkedItem(trimmed);
   }
 
   function runSlashCommand(command: (typeof SLASH_COMMANDS)[number]) {
@@ -908,7 +964,6 @@ export function CockpitApp() {
                 </h1>
               </div>
               <div className="cockpit-header-actions flex flex-wrap items-center gap-2 md:justify-end">
-                <ModeSelector mode={mode} onModeChange={updateMode} />
                 <button
                   type="button"
                   onClick={() => setFocusMode((current) => !current)}
@@ -1108,34 +1163,6 @@ export function CockpitApp() {
         onCreateHandoff={createAssistantHandoff}
       />
     </div>
-  );
-}
-
-function ModeSelector({
-  mode,
-  onModeChange,
-}: {
-  mode: CockpitMode;
-  onModeChange: (mode: CockpitMode) => void;
-}) {
-  return (
-    <fieldset className="cockpit-mode-grid flex flex-wrap gap-1 border p-1">
-      <legend className="sr-only">Mode</legend>
-      {COCKPIT_MODES.map((cockpitMode) => (
-        <button
-          key={cockpitMode}
-          type="button"
-          aria-pressed={mode === cockpitMode}
-          onClick={() => onModeChange(cockpitMode)}
-          className={[
-            "cockpit-mode-button min-h-8 px-3 text-xs font-semibold",
-            mode === cockpitMode ? "cockpit-mode-button-active" : "",
-          ].join(" ")}
-        >
-          {MODE_LABELS[cockpitMode]}
-        </button>
-      ))}
-    </fieldset>
   );
 }
 
