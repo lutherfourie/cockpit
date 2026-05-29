@@ -3,7 +3,12 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { parseCockpitOutput, type AgentInput, type CockpitAgentOutput } from "./schema";
+import {
+  CockpitAgentOutputSchema,
+  normalizeCockpitOutput,
+  type AgentInput,
+  type CockpitAgentOutput,
+} from "./schema";
 import type { RepoState } from "./repo-state";
 import type { SessionState } from "./storage";
 
@@ -24,6 +29,26 @@ export type CodexExecResult = {
 export type CodexExecRunner = (
   request: CodexExecRequest,
 ) => Promise<CodexExecResult>;
+
+export type CodexExecErrorCode =
+  | "timeout"
+  | "cli_not_found"
+  | "start_failed"
+  | "exit"
+  | "malformed_json"
+  | "invalid_output";
+
+export class CodexExecError extends Error {
+  readonly code: CodexExecErrorCode;
+  override readonly cause?: unknown;
+
+  constructor(code: CodexExecErrorCode, message: string, cause?: unknown) {
+    super(message);
+    this.name = "CodexExecError";
+    this.code = code;
+    this.cause = cause;
+  }
+}
 
 export type RunCodexExecOptions = {
   cwd?: string;
@@ -61,17 +86,26 @@ export async function runCodexExecCockpit({
 
   try {
     const runner = options.runner ?? runCodexCli;
-    const result = await runner({ args, stdin, cwd, outputPath, timeoutMs });
+    const result = await runCodexRunner(runner, {
+      args,
+      stdin,
+      cwd,
+      outputPath,
+      timeoutMs,
+    });
     if (result.exitCode !== 0) {
-      throw new Error(
-        `codex exec exited ${result.exitCode}: ${trimForError(result.stderr || result.stdout)}`,
+      throw new CodexExecError(
+        "exit",
+        `codex exec exited with code ${result.exitCode}: ${trimForError(
+          result.stderr || result.stdout,
+        )}`,
       );
     }
 
     const rawOutput = await readFile(outputPath, "utf8").catch(
       () => result.stdout,
     );
-    return parseCockpitOutput(rawOutput);
+    return parseCodexOutput(rawOutput);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -156,7 +190,12 @@ function runCodexCli(request: CodexExecRequest): Promise<CodexExecResult> {
     });
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error(`codex exec timed out after ${request.timeoutMs}ms`));
+      reject(
+        new CodexExecError(
+          "timeout",
+          `codex exec timed out after ${request.timeoutMs}ms`,
+        ),
+      );
     }, request.timeoutMs);
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
@@ -180,9 +219,162 @@ function runCodexCli(request: CodexExecRequest): Promise<CodexExecResult> {
   });
 }
 
+async function runCodexRunner(
+  runner: CodexExecRunner,
+  request: CodexExecRequest,
+): Promise<CodexExecResult> {
+  try {
+    const runPromise = runner(request);
+    return runner === runCodexCli
+      ? await runPromise
+      : await withTimeout(runPromise, request.timeoutMs);
+  } catch (error) {
+    throw mapCodexExecError(error);
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const resolveOnce = (value: T) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const rejectOnce = (error: unknown) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    };
+
+    timer = setTimeout(() => {
+      rejectOnce(
+        new CodexExecError(
+          "timeout",
+          `codex exec timed out after ${timeoutMs}ms`,
+        ),
+      );
+    }, timeoutMs);
+
+    promise.then(resolveOnce, rejectOnce);
+  });
+}
+
+function parseCodexOutput(rawOutput: string): CockpitAgentOutput {
+  const jsonOutput = parseJsonOutput(rawOutput);
+  const parsed = CockpitAgentOutputSchema.safeParse(
+    normalizeCodexCandidate(jsonOutput),
+  );
+  if (!parsed.success) {
+    throw new CodexExecError(
+      "invalid_output",
+      `codex exec returned JSON outside the cockpit schema: ${trimForError(
+        parsed.error.issues
+          .map(
+            (issue) =>
+              `${issue.path.join(".") || "output"}: ${issue.message}`,
+          )
+          .join("; "),
+      )}`,
+    );
+  }
+
+  return normalizeCockpitOutput(parsed.data);
+}
+
+function parseJsonOutput(rawOutput: string): unknown {
+  const compact = rawOutput.trim();
+  if (!compact) {
+    throw new CodexExecError(
+      "malformed_json",
+      "codex exec returned malformed JSON: empty output",
+    );
+  }
+
+  try {
+    return JSON.parse(compact);
+  } catch (error) {
+    throw new CodexExecError(
+      "malformed_json",
+      `codex exec returned malformed JSON: ${trimForError(formatError(error))}`,
+      error,
+    );
+  }
+}
+
+function normalizeCodexCandidate(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const candidate = { ...(value as Record<string, unknown>) };
+  if (candidate.handoff === null || candidate.handoff === "") {
+    delete candidate.handoff;
+  }
+
+  for (const key of ["parkingLot", "assumptions", "blockers"]) {
+    if (candidate[key] === null) {
+      candidate[key] = [];
+    }
+  }
+
+  return candidate;
+}
+
+function mapCodexExecError(error: unknown): CodexExecError {
+  if (error instanceof CodexExecError) {
+    return error;
+  }
+
+  const code = readErrorCode(error);
+  if (code === "ENOENT") {
+    return new CodexExecError(
+      "cli_not_found",
+      "codex CLI was not found on PATH. Install or configure the Codex CLI before selecting the codex provider.",
+      error,
+    );
+  }
+
+  if (code === "EACCES" || code === "EPERM") {
+    return new CodexExecError(
+      "start_failed",
+      `codex exec could not start because access was denied: ${trimForError(
+        formatError(error),
+      )}`,
+      error,
+    );
+  }
+
+  return new CodexExecError(
+    "start_failed",
+    `codex exec failed: ${trimForError(formatError(error))}`,
+    error,
+  );
+}
+
+function readErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return undefined;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
 function readTimeoutMs(): number {
   const value = Number(process.env.COCKPIT_CODEX_TIMEOUT_MS);
   return Number.isFinite(value) && value > 0 ? value : 120_000;
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function trimForError(value: string): string {
