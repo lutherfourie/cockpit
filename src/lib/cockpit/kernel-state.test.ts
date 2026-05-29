@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { type CockpitAgentOutput } from "./schema";
 import {
   createInitialKernelState,
   parseKernelState,
@@ -145,6 +146,94 @@ describe("cockpit kernel state", () => {
     }
 
     expect(state.output.parkingLot).toEqual(["two", "three", "four", "five", "six"]);
+  });
+
+  it("normalizes all stable panels when setting cockpit output", () => {
+    const output: CockpitAgentOutput = {
+      currentGoal: "  Keep the kernel useful without a model.  ",
+      nextAction: "  Write reducer tests\nthen run vitest.  ",
+      proofNeeded: "  A focused   kernel-state test passes.  ",
+      parkingLot: [" one ", " two ", " three ", " four ", " five ", " six "],
+      handoff: "  Resume with the reducer invariant test.  ",
+      assumptions: ["  no LLM is required  "],
+      blockers: ["  cache writes may be sandboxed  "],
+    };
+
+    const state = reduceKernelState(createInitialKernelState(), {
+      type: "setOutput",
+      output,
+      sessionId: "session-1",
+    });
+    output.parkingLot[0] = "mutated outside the reducer";
+
+    expect(state.output).toEqual({
+      currentGoal: "Keep the kernel useful without a model.",
+      nextAction: "Write reducer tests then run vitest.",
+      proofNeeded: "A focused kernel-state test passes.",
+      parkingLot: ["one", "two", "three", "four", "five"],
+      handoff: "Resume with the reducer invariant test.",
+      assumptions: ["no LLM is required"],
+      blockers: ["cache writes may be sandboxed"],
+    });
+    expect(state.sessionId).toBe("session-1");
+  });
+
+  it("keeps current stable panels when setOutput receives invalid runtime output", () => {
+    const previous = reduceKernelState(createInitialKernelState(), {
+      type: "setOutput",
+      output: {
+        currentGoal: "Protect reducer state.",
+        nextAction: "Reject malformed output.",
+        proofNeeded: "Stable panels stay readable.",
+        parkingLot: ["valid tangent"],
+        handoff: "Continue from the valid reducer state.",
+        assumptions: [],
+        blockers: [],
+      },
+      sessionId: "session-1",
+    });
+
+    const next = reduceKernelState(previous, {
+      type: "setOutput",
+      output: {
+        currentGoal: "This should not replace state.",
+        nextAction: "   ",
+        proofNeeded: "A blank required panel is invalid.",
+        parkingLot: [],
+        assumptions: [],
+        blockers: [],
+      } as CockpitAgentOutput,
+      sessionId: "session-2",
+    });
+
+    expect(next.output).toEqual(previous.output);
+    expect(next.sessionId).toBe("session-1");
+  });
+
+  it("parks cleaned text without rewriting the other stable panels", () => {
+    const previous = reduceKernelState(createInitialKernelState(), {
+      type: "setOutput",
+      output: {
+        currentGoal: "Keep the current goal.",
+        nextAction: "Keep the next action.",
+        proofNeeded: "Keep the proof needed.",
+        parkingLot: ["existing tangent"],
+        handoff: "Keep the handoff draft.",
+        assumptions: [],
+        blockers: [],
+      },
+    });
+
+    const next = reduceKernelState(previous, {
+      type: "park",
+      content: "  later\n\nthread  ",
+    });
+
+    expect(next.output.currentGoal).toBe(previous.output.currentGoal);
+    expect(next.output.nextAction).toBe(previous.output.nextAction);
+    expect(next.output.proofNeeded).toBe(previous.output.proofNeeded);
+    expect(next.output.handoff).toBe(previous.output.handoff);
+    expect(next.output.parkingLot).toEqual(["existing tangent", "later thread"]);
   });
 
   it("keeps only the last 20 thought chat messages", () => {

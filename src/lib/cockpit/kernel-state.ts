@@ -1,6 +1,7 @@
 import {
   COCKPIT_MODES,
   CockpitAgentOutputSchema,
+  normalizeCockpitOutput,
   type CockpitAgentOutput,
   type CockpitMode,
 } from "./schema";
@@ -149,12 +150,18 @@ export function reduceKernelState(
   action: KernelAction,
 ): CockpitKernelState {
   switch (action.type) {
-    case "setOutput":
+    case "setOutput": {
+      const output = parseCockpitOutput(action.output);
+      if (!output) {
+        return state;
+      }
+
       return {
         ...state,
-        output: action.output,
+        output,
         sessionId: action.sessionId ?? state.sessionId,
       };
+    }
     case "setMode":
       return { ...state, mode: action.mode };
     case "setTheme":
@@ -256,7 +263,7 @@ function isCockpitOutput(value: unknown): value is CockpitAgentOutput {
 
 function parseCockpitOutput(value: unknown): CockpitAgentOutput | undefined {
   const parsed = CockpitAgentOutputSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? normalizeCockpitOutput(parsed.data) : undefined;
 }
 
 function isValidPersistedKernelState(
