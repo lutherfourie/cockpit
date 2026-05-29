@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LaneInventoryPanel } from "./lane-inventory-panel";
+
+const FIXTURES_ROOT = path.resolve(process.cwd(), "tests/fixtures/lanes");
 
 const sampleLane = {
   laneId: "sample-feedback-triage",
@@ -68,6 +73,56 @@ describe("LaneInventoryPanel", () => {
     expect(container.textContent).toContain("codex.local");
   });
 
+  it("skips malformed lane entries while rendering valid lanes", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          lanes: [
+            sampleLane,
+            {
+              laneId: "bad",
+              pluginId: "vibe",
+              name: { value: "not renderable" },
+              repoPath: "/tmp/fixtures",
+              reads: [],
+              owns: [],
+              status: "ready",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    ) as unknown as typeof globalThis.fetch;
+
+    await act(async () => {
+      root.render(<LaneInventoryPanel />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Lanes (1)");
+    expect(container.textContent).toContain("Sample feedback triage");
+    expect(container.textContent).not.toContain("bad");
+  });
+
+  it("shows a controlled error when the lane API payload has no lanes array", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ lanes: "bad" }), { status: 200 }),
+    ) as unknown as typeof globalThis.fetch;
+
+    await act(async () => {
+      root.render(<LaneInventoryPanel />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain(
+      "Failed to load lanes: Invalid lane inventory response.",
+    );
+  });
+
   it("shows an error message when the API returns non-200", async () => {
     globalThis.fetch = vi.fn(async () =>
       new Response(JSON.stringify({ error: "boom" }), { status: 500 }),
@@ -79,5 +134,23 @@ describe("LaneInventoryPanel", () => {
       await Promise.resolve();
     });
     expect(container.textContent).toMatch(/failed|error/i);
+  });
+
+  it("shows a controlled error when the lane API returns malformed JSON like bad.json", async () => {
+    const badJson = await readFile(path.join(FIXTURES_ROOT, "bad.json"), "utf8");
+    globalThis.fetch = vi.fn(async () =>
+      new Response(badJson, { status: 200 }),
+    ) as unknown as typeof globalThis.fetch;
+
+    await act(async () => {
+      root.render(<LaneInventoryPanel />);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain(
+      "Failed to load lanes: Invalid lane inventory response.",
+    );
   });
 });

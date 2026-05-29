@@ -36,6 +36,8 @@ const INITIAL_STATE: PanelState = {
   generating: {},
 };
 
+const INVALID_LANE_RESPONSE_MESSAGE = "Invalid lane inventory response.";
+
 export function LaneInventoryPanel() {
   const [state, setState] = useState<PanelState>(INITIAL_STATE);
 
@@ -54,9 +56,9 @@ export function LaneInventoryPanel() {
           }
           return;
         }
-        const body = (await res.json()) as { lanes: LaneSummary[] };
+        const lanes = await readLaneInventoryResponse(res);
         if (!cancelled) {
-          setState((s) => ({ ...s, status: "ready", lanes: body.lanes }));
+          setState((s) => ({ ...s, status: "ready", lanes }));
         }
       } catch (err) {
         if (!cancelled) {
@@ -185,6 +187,61 @@ export function LaneInventoryPanel() {
       })}
     </div>
   );
+}
+
+async function readLaneInventoryResponse(res: Response): Promise<LaneSummary[]> {
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    throw new Error(INVALID_LANE_RESPONSE_MESSAGE);
+  }
+  return parseLaneInventoryResponse(body);
+}
+
+function parseLaneInventoryResponse(body: unknown): LaneSummary[] {
+  if (!isRecord(body) || !Array.isArray(body.lanes)) {
+    throw new Error(INVALID_LANE_RESPONSE_MESSAGE);
+  }
+  return body.lanes.filter(isLaneSummary);
+}
+
+function isLaneSummary(value: unknown): value is LaneSummary {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.laneId === "string" &&
+    typeof value.pluginId === "string" &&
+    typeof value.name === "string" &&
+    typeof value.repoPath === "string" &&
+    isStringArray(value.reads) &&
+    isStringArray(value.owns) &&
+    isLaneStatus(value.status) &&
+    isOptionalString(value.description) &&
+    isOptionalString(value.target) &&
+    isOptionalString(value.approval) &&
+    isOptionalStringArray(value.verify) &&
+    isOptionalString(value.lastRunAt)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalStringArray(value: unknown): value is string[] | undefined {
+  return value === undefined || isStringArray(value);
+}
+
+function isLaneStatus(value: unknown): value is LaneSummary["status"] {
+  return value === "ready" || value === "running" || value === "error";
 }
 
 function HandoffControls(props: {
