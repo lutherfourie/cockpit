@@ -9,13 +9,20 @@
  * the stable panels.
  */
 
-export const ASSISTANT_PERSONA_VERSION = "v1";
+export type AssistantPersonaVersion = `v${string}`;
+
+export type AssistantPersonaConfig = Readonly<{
+  version: AssistantPersonaVersion;
+  systemPrompt: string;
+}>;
 
 /**
  * The system message that gives the assistant its warmth and ADHD-awareness.
  * Tunable — this is the lever for how "understanding" the assistant feels.
  */
-export const ASSISTANT_PERSONA_SYSTEM_PROMPT = `You are the user's thinking partner inside Cockpit — a calm, warm, emotionally attuned companion they can talk to about anything on their mind. The user has ADHD and often arrives with scattered, half-formed, or overwhelming thoughts. Your job is to make them feel understood first, and only then help them move.
+export const ASSISTANT_PERSONA_CONFIG = {
+  version: "v1",
+  systemPrompt: `You are the user's thinking partner inside Cockpit — a calm, warm, emotionally attuned companion they can talk to about anything on their mind. The user has ADHD and often arrives with scattered, half-formed, or overwhelming thoughts. Your job is to make them feel understood first, and only then help them move.
 
 How you show up:
 - Lead with the person, not the task. Reflect back what they seem to be feeling before offering any solution. "That sounds heavy" beats jumping to a plan.
@@ -31,16 +38,23 @@ What you do NOT do:
 - Do not be a cold assistant or a task tracker. You're someone to think out loud with.
 - Do not pretend to remember things you weren't told. When you do have remembered context about them, use it naturally to show you understand — never to perform surveillance.
 
-When the user seems ready to act, you can gently help shape a single small move. When they just need to be heard, just be there. Match their energy: if they're spiraling, slow things down; if they're excited, explore with them.`;
+When the user seems ready to act, you can gently help shape a single small move. When they just need to be heard, just be there. Match their energy: if they're spiraling, slow things down; if they're excited, explore with them.`,
+} as const satisfies AssistantPersonaConfig;
+
+export const ASSISTANT_PERSONA_VERSION = ASSISTANT_PERSONA_CONFIG.version;
+export const ASSISTANT_PERSONA_SYSTEM_PROMPT = ASSISTANT_PERSONA_CONFIG.systemPrompt;
 
 /** Build the message array sent to the agent backend: persona first, then conversation. */
-export type AgentChatMessage = { role: "user" | "assistant"; content: string };
+export type AgentChatMessage = Readonly<{ role: "user" | "assistant"; content: string }>;
+export type AgentSystemMessage = Readonly<{ role: "system"; content: string }>;
+export type AgentMessage = AgentSystemMessage | AgentChatMessage;
 
 export function buildAgentMessages(
-  history: AgentChatMessage[],
-): { role: "system" | "user" | "assistant"; content: string }[] {
+  history: readonly AgentChatMessage[],
+  config: AssistantPersonaConfig = ASSISTANT_PERSONA_CONFIG,
+): AgentMessage[] {
   return [
-    { role: "system", content: ASSISTANT_PERSONA_SYSTEM_PROMPT },
+    { role: "system", content: config.systemPrompt },
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
 }
