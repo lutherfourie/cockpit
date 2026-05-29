@@ -5,6 +5,10 @@ import { Component, type ReactNode } from "react";
 import type { GeneratedSurface } from "@/lib/cockpit/kernel-state";
 import { GeneratedSurfaceRenderer } from "../../lib/openui/generated-surface-library";
 
+const MAX_GENERATED_SURFACE_REASON_LENGTH = 240;
+const CONTROL_CHARACTERS_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const WHITESPACE_PATTERN = /\s+/g;
+
 type GeneratedSurfaceErrorBoundaryState = {
   error: Error | null;
 };
@@ -59,7 +63,10 @@ export function GeneratedSurfaceSlot({
   }
 
   return (
-    <div data-testid="generated-surface">
+    <div
+      className="max-h-80 overflow-auto overscroll-contain"
+      data-testid="generated-surface"
+    >
       <GeneratedSurfaceErrorBoundary
         key={`${surface.kind}:${surface.title}:${surface.body}`}
       >
@@ -76,6 +83,8 @@ function GeneratedSurfaceUnavailable({
   reason: string;
   includeTestId?: boolean;
 }) {
+  const safeReason = sanitizeGeneratedSurfaceReason(reason);
+
   return (
     <section
       className="cockpit-alert border p-4"
@@ -84,7 +93,23 @@ function GeneratedSurfaceUnavailable({
       <div className="mb-2 text-xs font-semibold uppercase tracking-normal">
         Generated Surface Unavailable
       </div>
-      <p className="text-sm leading-6">{reason}</p>
+      <p className="text-sm leading-6">{safeReason}</p>
     </section>
   );
+}
+
+function sanitizeGeneratedSurfaceReason(reason: string): string {
+  const normalized = reason
+    .replace(CONTROL_CHARACTERS_PATTERN, "")
+    .replace(WHITESPACE_PATTERN, " ")
+    .trim();
+
+  const message = normalized || "Generated surface is unavailable.";
+  if (message.length <= MAX_GENERATED_SURFACE_REASON_LENGTH) {
+    return message;
+  }
+
+  return `${message
+    .slice(0, MAX_GENERATED_SURFACE_REASON_LENGTH - 3)
+    .trimEnd()}...`;
 }
