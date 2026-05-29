@@ -48,6 +48,32 @@ export interface CockpitMemoryStore {
   }): Promise<{ saved: boolean; reason?: string }>;
 }
 
+export const SUPABASE_CLIENT_UNAVAILABLE_REASON =
+  "Supabase server client is unavailable.";
+export const NO_AUTHENTICATED_USER_REASON =
+  "No authenticated Supabase user is present.";
+
+export async function createCockpitMemoryStore(
+  supabase: SupabaseClient | null | undefined,
+): Promise<CockpitMemoryStore> {
+  if (!supabase) {
+    return new NullCockpitMemoryStore(SUPABASE_CLIENT_UNAVAILABLE_REASON);
+  }
+
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    const userId = data?.user?.id?.trim();
+
+    if (error || !userId) {
+      return new NullCockpitMemoryStore(NO_AUTHENTICATED_USER_REASON);
+    }
+
+    return new SupabaseCockpitMemoryStore(supabase, userId);
+  } catch {
+    return new NullCockpitMemoryStore(NO_AUTHENTICATED_USER_REASON);
+  }
+}
+
 export class NullCockpitMemoryStore implements CockpitMemoryStore {
   constructor(
     private readonly reason = "Supabase is not configured or no user is authenticated.",
@@ -95,13 +121,17 @@ export class NullCockpitMemoryStore implements CockpitMemoryStore {
 }
 
 export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
+  private readonly normalizedUserId: string;
+
   constructor(
     private readonly supabase: SupabaseClient,
-    private readonly userId: string,
-  ) {}
+    userId: string,
+  ) {
+    this.normalizedUserId = userId.trim();
+  }
 
   async loadSessionState(sessionId?: string): Promise<SessionState | null> {
-    if (!sessionId) {
+    if (!sessionId || !this.hasAuthenticatedUser()) {
       return null;
     }
 
@@ -109,7 +139,7 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
       .from("cockpit_sessions")
       .select("id,title,active_goal,next_action,proof_needed,status")
       .eq("id", sessionId)
-      .eq("user_id", this.userId)
+      .eq("user_id", this.normalizedUserId)
       .maybeSingle();
 
     if (error || !data) {
@@ -127,10 +157,14 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
   }
 
   async loadChatMessages(sessionId?: string): Promise<ThoughtChatHistoryMessage[]> {
+    if (!this.hasAuthenticatedUser()) {
+      return [];
+    }
+
     let query = this.supabase
       .from("cockpit_chat_messages")
       .select("role,content,created_at")
-      .eq("user_id", this.userId)
+      .eq("user_id", this.normalizedUserId)
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -152,10 +186,14 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
   }
 
   async loadAssistantEvents(sessionId?: string): Promise<AssistantEvent[]> {
+    if (!this.hasAuthenticatedUser()) {
+      return [];
+    }
+
     let query = this.supabase
       .from("cockpit_assistant_events")
       .select("id,event_type,role,content,metadata,created_at")
-      .eq("user_id", this.userId)
+      .eq("user_id", this.normalizedUserId)
       .order("created_at", { ascending: false })
       .limit(40);
 
@@ -214,8 +252,12 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
     message: string;
     output: CockpitAgentOutput;
   }): Promise<{ sessionId?: string; saved: boolean; reason?: string }> {
+    if (!this.hasAuthenticatedUser()) {
+      return this.unauthenticatedSaveResult();
+    }
+
     const row = {
-      user_id: this.userId,
+      user_id: this.normalizedUserId,
       title: createTitle(message, output.currentGoal),
       active_goal: output.currentGoal,
       next_action: output.nextAction,
@@ -228,7 +270,7 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
         .from("cockpit_sessions")
         .update(row)
         .eq("id", sessionId)
-        .eq("user_id", this.userId)
+        .eq("user_id", this.normalizedUserId)
         .select("id")
         .single();
 
@@ -261,8 +303,12 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
     role: ThoughtChatRole;
     content: string;
   }): Promise<{ saved: boolean; reason?: string }> {
+    if (!this.hasAuthenticatedUser()) {
+      return this.unauthenticatedSaveResult();
+    }
+
     const { error } = await this.supabase.from("cockpit_chat_messages").insert({
-      user_id: this.userId,
+      user_id: this.normalizedUserId,
       session_id: sessionId ?? null,
       role,
       content,
@@ -282,10 +328,14 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
     saved: boolean;
     reason?: string;
   }> {
+    if (!this.hasAuthenticatedUser()) {
+      return this.unauthenticatedSaveResult();
+    }
+
     const { data, error } = await this.supabase
       .from("cockpit_assistant_events")
       .insert({
-        user_id: this.userId,
+        user_id: this.normalizedUserId,
         session_id: sessionId ?? null,
         event_type: type,
         role: role ?? null,
@@ -314,8 +364,12 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
     content: string;
     source?: string;
   }): Promise<{ saved: boolean; reason?: string }> {
+    if (!this.hasAuthenticatedUser()) {
+      return this.unauthenticatedSaveResult();
+    }
+
     const { error } = await this.supabase.from("parking_lot_items").insert({
-      user_id: this.userId,
+      user_id: this.normalizedUserId,
       session_id: sessionId ?? null,
       content,
       source: source ?? null,
@@ -333,14 +387,26 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
     target: string;
     prompt: string;
   }): Promise<{ saved: boolean; reason?: string }> {
+    if (!this.hasAuthenticatedUser()) {
+      return this.unauthenticatedSaveResult();
+    }
+
     const { error } = await this.supabase.from("handoffs").insert({
-      user_id: this.userId,
+      user_id: this.normalizedUserId,
       session_id: sessionId ?? null,
       target,
       prompt,
     });
 
     return error ? { saved: false, reason: error.message } : { saved: true };
+  }
+
+  private hasAuthenticatedUser(): boolean {
+    return this.normalizedUserId.length > 0;
+  }
+
+  private unauthenticatedSaveResult(): { saved: false; reason: string } {
+    return { saved: false, reason: NO_AUTHENTICATED_USER_REASON };
   }
 }
 
