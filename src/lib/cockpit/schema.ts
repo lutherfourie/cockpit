@@ -55,17 +55,31 @@ export type CockpitPersistence = z.infer<typeof CockpitPersistenceSchema>;
 export type CockpitTurnResult = z.infer<typeof CockpitTurnResultSchema>;
 
 const MAX_LIST_ITEMS = 5;
+// The parking lot is durable scratch space — capping it at MAX_LIST_ITEMS would
+// silently drop ideas the user explicitly chose to keep. Keep a high ceiling so
+// items are never lost without intent.
+export const MAX_PARKING_LOT_ITEMS = 200;
 
 function cleanText(value: string, fallback: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > 0 ? compact : fallback;
 }
 
-function cleanList(items: string[]): string[] {
-  return items
-    .map((item) => item.replace(/\s+/g, " ").trim())
-    .filter(Boolean)
-    .slice(0, MAX_LIST_ITEMS);
+function cleanList(items: string[], max: number = MAX_LIST_ITEMS): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of items) {
+    const compact = item.replace(/\s+/g, " ").trim();
+    if (!compact || seen.has(compact)) {
+      continue;
+    }
+    seen.add(compact);
+    result.push(compact);
+    if (result.length >= max) {
+      break;
+    }
+  }
+  return result;
 }
 
 export function normalizeCockpitOutput(
@@ -78,7 +92,7 @@ export function normalizeCockpitOutput(
       output.proofNeeded,
       "Define the proof that would show progress.",
     ),
-    parkingLot: cleanList(output.parkingLot),
+    parkingLot: cleanList(output.parkingLot, MAX_PARKING_LOT_ITEMS),
     handoff: output.handoff ? cleanText(output.handoff, "") : undefined,
     assumptions: cleanList(output.assumptions),
     blockers: cleanList(output.blockers),

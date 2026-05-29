@@ -137,14 +137,98 @@ describe("cockpit kernel state", () => {
     });
   });
 
-  it("adds parking items without growing beyond the cockpit limit", () => {
+  it("keeps parked items beyond the old 5-item limit (no silent drop)", () => {
     let state = createInitialKernelState();
 
     for (const item of ["one", "two", "three", "four", "five", "six"]) {
       state = reduceKernelState(state, { type: "park", content: item });
     }
 
-    expect(state.output.parkingLot).toEqual(["two", "three", "four", "five", "six"]);
+    expect(state.output.parkingLot).toEqual([
+      "one",
+      "two",
+      "three",
+      "four",
+      "five",
+      "six",
+    ]);
+  });
+
+  it("does not park duplicate items", () => {
+    let state = createInitialKernelState();
+    state = reduceKernelState(state, { type: "park", content: "idea" });
+    state = reduceKernelState(state, { type: "park", content: "  idea  " });
+
+    expect(state.output.parkingLot).toEqual(["idea"]);
+  });
+
+  it("preserves manually parked items across an assistant turn (setOutput merges, never clobbers)", () => {
+    let state = createInitialKernelState();
+    state = reduceKernelState(state, { type: "park", content: "browser extension" });
+    state = reduceKernelState(state, { type: "park", content: "IFTTT" });
+
+    state = reduceKernelState(state, {
+      type: "setOutput",
+      output: {
+        currentGoal: "Ship the turn route.",
+        nextAction: "Wire the daemon.",
+        proofNeeded: "Stream events end to end.",
+        parkingLot: [],
+        assumptions: [],
+        blockers: [],
+      },
+    });
+
+    expect(state.output.parkingLot).toEqual(["browser extension", "IFTTT"]);
+  });
+
+  it("unions new model parking items with existing ones, deduped and order-preserving", () => {
+    let state = createInitialKernelState();
+    state = reduceKernelState(state, { type: "park", content: "browser extension" });
+
+    state = reduceKernelState(state, {
+      type: "setOutput",
+      output: {
+        currentGoal: "Ship the turn route.",
+        nextAction: "Wire the daemon.",
+        proofNeeded: "Stream events end to end.",
+        parkingLot: ["browser extension", "default new-tab page"],
+        assumptions: [],
+        blockers: [],
+      },
+    });
+
+    expect(state.output.parkingLot).toEqual([
+      "browser extension",
+      "default new-tab page",
+    ]);
+  });
+
+  it("merges hydrated durable parking items with existing ones, deduped and order-preserving", () => {
+    let state = createInitialKernelState();
+    state = reduceKernelState(state, { type: "park", content: "local idea" });
+
+    state = reduceKernelState(state, {
+      type: "hydrateParkingLot",
+      items: ["durable idea", "  local idea  ", "another durable"],
+    });
+
+    expect(state.output.parkingLot).toEqual([
+      "local idea",
+      "durable idea",
+      "another durable",
+    ]);
+  });
+
+  it("ignores blank hydrated parking items", () => {
+    let state = createInitialKernelState();
+
+    state = reduceKernelState(state, {
+      type: "hydrateParkingLot",
+      items: ["  ", "real idea", ""],
+    });
+
+    expect(state.output.parkingLot).toEqual(["real idea"]);
   });
 
   it("keeps only the last 20 thought chat messages", () => {

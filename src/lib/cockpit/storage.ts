@@ -22,6 +22,7 @@ export interface CockpitMemoryStore {
   loadSessionState(sessionId?: string): Promise<SessionState | null>;
   loadChatMessages?(sessionId?: string): Promise<ThoughtChatHistoryMessage[]>;
   loadAssistantEvents?(sessionId?: string): Promise<AssistantEvent[]>;
+  loadParkingLotItems?(sessionId?: string): Promise<string[]>;
   saveSessionState(args: {
     sessionId?: string;
     message: string;
@@ -61,6 +62,10 @@ export class NullCockpitMemoryStore implements CockpitMemoryStore {
   }
 
   async loadAssistantEvents(): Promise<AssistantEvent[]> {
+    return [];
+  }
+
+  async loadParkingLotItems(): Promise<string[]> {
     return [];
   }
 
@@ -163,6 +168,41 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
     }
 
     return assistantEventsFromChatMessages(await this.loadChatMessages(sessionId));
+  }
+
+  async loadParkingLotItems(sessionId?: string): Promise<string[]> {
+    let query = this.supabase
+      .from("parking_lot_items")
+      .select("content,created_at")
+      .eq("user_id", this.userId)
+      .is("resolved_at", null)
+      .order("created_at", { ascending: true })
+      .limit(200);
+
+    query = sessionId
+      ? query.eq("session_id", sessionId)
+      : query.is("session_id", null);
+
+    const { data, error } = await query;
+
+    if (error || !data) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    const items: string[] = [];
+    for (const row of data) {
+      const content =
+        typeof row.content === "string"
+          ? row.content.replace(/\s+/g, " ").trim()
+          : "";
+      if (!content || seen.has(content)) {
+        continue;
+      }
+      seen.add(content);
+      items.push(content);
+    }
+    return items;
   }
 
   async saveSessionState({

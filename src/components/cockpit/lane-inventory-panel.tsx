@@ -171,7 +171,7 @@ export function LaneInventoryPanel() {
               onGenerate={onGenerateHandoff}
             />
             {handoff && (
-              <pre className="mt-3 max-h-72 overflow-auto rounded bg-zinc-900 p-2 text-xs whitespace-pre-wrap">
+              <pre className="mt-3 max-h-72 overflow-auto rounded bg-zinc-900 p-2 text-xs whitespace-pre-wrap text-zinc-100">
                 {handoff.text}
               </pre>
             )}
