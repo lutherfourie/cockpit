@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { ThoughtChatHistoryMessage } from "./thought-chat";
 
-export const AssistantEventTypeSchema = z.enum([
+export const ASSISTANT_EVENT_TYPES = [
   "user_message",
   "assistant_message",
   "tool_call",
@@ -11,9 +11,13 @@ export const AssistantEventTypeSchema = z.enum([
   "promotion",
   "parked_item",
   "handoff",
-]);
+] as const;
 
-export const AssistantEventRoleSchema = z.enum(["user", "assistant", "system"]);
+export const ASSISTANT_EVENT_ROLES = ["user", "assistant", "system"] as const;
+
+export const AssistantEventTypeSchema = z.enum(ASSISTANT_EVENT_TYPES);
+
+export const AssistantEventRoleSchema = z.enum(ASSISTANT_EVENT_ROLES);
 
 export const AssistantEventSchema = z.object({
   id: z.string().min(1),
@@ -38,6 +42,15 @@ export type AssistantEvent = z.infer<typeof AssistantEventSchema>;
 export type AppendAssistantEventInput = z.infer<
   typeof AppendAssistantEventInputSchema
 >;
+
+export type AssistantEventRow = {
+  readonly id: string;
+  readonly event_type: string;
+  readonly role: string | null;
+  readonly content: string;
+  readonly metadata: unknown;
+  readonly created_at: string;
+};
 
 export function createLocalAssistantEvent({
   type,
@@ -69,16 +82,9 @@ export function assistantEventsFromChatMessages(
 }
 
 export function parseAssistantEventRows(
-  rows: {
-    id: string;
-    event_type: string;
-    role: string | null;
-    content: string;
-    metadata: unknown;
-    created_at: string;
-  }[],
+  rows: readonly AssistantEventRow[],
 ): AssistantEvent[] {
-  return rows.flatMap((row) => {
+  const events = rows.flatMap((row) => {
     const parsed = AssistantEventSchema.safeParse({
       id: row.id,
       type: row.event_type,
@@ -90,4 +96,48 @@ export function parseAssistantEventRows(
 
     return parsed.success ? [parsed.data] : [];
   });
+
+  return replayAssistantEvents([], events);
+}
+
+export function replayAssistantEvents(
+  currentEvents: readonly AssistantEvent[],
+  incomingEvents: readonly AssistantEvent[],
+): AssistantEvent[] {
+  const eventsById = new Map<
+    string,
+    { event: AssistantEvent; firstSeenIndex: number }
+  >();
+  let nextIndex = 0;
+
+  for (const event of [...currentEvents, ...incomingEvents]) {
+    const existingEvent = eventsById.get(event.id);
+    eventsById.set(event.id, {
+      event,
+      firstSeenIndex: existingEvent?.firstSeenIndex ?? nextIndex,
+    });
+    nextIndex += 1;
+  }
+
+  return [...eventsById.values()]
+    .sort(compareAssistantEventReplayRecords)
+    .map(({ event }) => event);
+}
+
+function compareAssistantEventReplayRecords(
+  left: { event: AssistantEvent; firstSeenIndex: number },
+  right: { event: AssistantEvent; firstSeenIndex: number },
+): number {
+  const byCreatedAt =
+    assistantEventTimestamp(left.event.createdAt) -
+    assistantEventTimestamp(right.event.createdAt);
+
+  return byCreatedAt === 0
+    ? left.firstSeenIndex - right.firstSeenIndex
+    : byCreatedAt;
+}
+
+function assistantEventTimestamp(createdAt: string): number {
+  const timestamp = Date.parse(createdAt);
+  return Number.isFinite(timestamp) ? timestamp : Number.POSITIVE_INFINITY;
 }
