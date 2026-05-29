@@ -15,6 +15,7 @@ import {
   createFallbackCockpitOutput,
   normalizeCockpitOutput,
   parseCockpitOutput,
+  type CockpitProvider,
   type CockpitTurnResult,
 } from "./schema";
 import {
@@ -33,6 +34,8 @@ export type RunCockpitAgentOptions = {
 type BuildCockpitToolsOptions = {
   includeSessionSaveTool?: boolean;
 };
+
+type CockpitProviderEnv = Record<string, string | undefined>;
 
 const COCKPIT_INSTRUCTIONS = `
 You are the Cockpit coordinator for a personal ADHD development assistant.
@@ -356,11 +359,25 @@ function createPersistenceResult(
   };
 }
 
-function readProvider() {
-  const parsed = CockpitProviderSchema.safeParse(process.env.COCKPIT_LLM_PROVIDER);
+/**
+ * Resolve the configured model provider without requiring a live model.
+ *
+ * A valid COCKPIT_LLM_PROVIDER always wins, including providers that do not use
+ * OPENAI_API_KEY. When the setting is missing or invalid, OpenAI is selected only
+ * if OPENAI_API_KEY is present; otherwise the deterministic local provider keeps
+ * the cockpit kernel and tests usable without an LLM.
+ */
+export function resolveCockpitProvider(
+  env: CockpitProviderEnv = process.env,
+): CockpitProvider {
+  const parsed = CockpitProviderSchema.safeParse(env.COCKPIT_LLM_PROVIDER);
   if (parsed.success) {
     return parsed.data;
   }
 
-  return process.env.OPENAI_API_KEY ? "openai" : "local";
+  return env.OPENAI_API_KEY ? "openai" : "local";
+}
+
+function readProvider() {
+  return resolveCockpitProvider();
 }

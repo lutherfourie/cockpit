@@ -1,9 +1,36 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildCockpitTools, buildSdkCockpitTools, runCockpitAgent } from "./agent";
+import {
+  buildCockpitTools,
+  buildSdkCockpitTools,
+  resolveCockpitProvider,
+  runCockpitAgent,
+} from "./agent";
 import { NullCockpitMemoryStore, type CockpitMemoryStore } from "./storage";
 
 describe("cockpit agent", () => {
+  it.each([
+    ["local", "key", "local"],
+    ["openai", "key", "openai"],
+    ["openai", "", "openai"],
+    ["codex", "", "codex"],
+    ["cerebras", "", "cerebras"],
+    [undefined, "key", "openai"],
+    [undefined, "", "local"],
+    ["unsupported", "key", "openai"],
+    ["unsupported", "", "local"],
+  ] as const)(
+    "resolves provider %s with OPENAI_API_KEY=%s to %s",
+    (configuredProvider, openAiKey, expectedProvider) => {
+      expect(
+        resolveCockpitProvider({
+          COCKPIT_LLM_PROVIDER: configuredProvider,
+          OPENAI_API_KEY: openAiKey,
+        }),
+      ).toBe(expectedProvider);
+    },
+  );
+
   it("uses deterministic fallback when OPENAI_API_KEY is absent", async () => {
     vi.stubEnv("COCKPIT_LLM_PROVIDER", "local");
     vi.stubEnv("OPENAI_API_KEY", "");
@@ -16,6 +43,27 @@ describe("cockpit agent", () => {
 
     expect(result.output.currentGoal).toContain("I need to fix tests");
     expect(result.output.nextAction).toContain("smallest concrete step");
+    expect(result.persistence.saved).toBe(true);
+    expect(result.persistence.source).toBe("supabase");
+    expect(store.saveSessionState).toHaveBeenCalledOnce();
+  });
+
+  it("falls back locally when OpenAI is selected without OPENAI_API_KEY", async () => {
+    vi.stubEnv("COCKPIT_LLM_PROVIDER", "openai");
+    vi.stubEnv("OPENAI_API_KEY", "");
+    const store = createMockStore();
+
+    const result = await runCockpitAgent(
+      { message: "try the OpenAI provider", mode: "focus" },
+      { store },
+    );
+
+    expect(result.output.blockers).toEqual([
+      "OPENAI_API_KEY is not set, so the local fallback handled this turn.",
+    ]);
+    expect(result.output.assumptions).toEqual([
+      "Local deterministic fallback was used before live model output.",
+    ]);
     expect(result.persistence.saved).toBe(true);
     expect(result.persistence.source).toBe("supabase");
     expect(store.saveSessionState).toHaveBeenCalledOnce();
