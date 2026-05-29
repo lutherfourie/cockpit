@@ -6,14 +6,27 @@ import { LogIn, LogOut } from "lucide-react";
 
 import { createSupabaseBrowserClient } from "@/lib/cockpit/supabase-client";
 
+const AUTH_CALLBACK_STATUS_MESSAGES = {
+  "signed-in": "Signed in. Live state will sync shortly.",
+  "missing-code": "Sign-in link was incomplete. Request a new email link.",
+  "callback-error":
+    "Sign-in link could not be confirmed. Request a new email link.",
+  unconfigured: "Live state unavailable: Supabase is not configured.",
+} as const;
+
+type AuthCallbackStatus = keyof typeof AUTH_CALLBACK_STATUS_MESSAGES;
+
 export function AuthPanel() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const callbackStatus = useMemo(() => getAuthCallbackStatus(), []);
   const [user, setUser] = useState<User | null>(null);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState(
-    supabase
-      ? "Checking live state"
-      : "Live state unavailable: Supabase is not configured.",
+    callbackStatus
+      ? AUTH_CALLBACK_STATUS_MESSAGES[callbackStatus]
+      : supabase
+        ? "Checking live state"
+        : "Live state unavailable: Supabase is not configured.",
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -30,7 +43,19 @@ export function AuthPanel() {
       }
 
       setUser(data.session?.user ?? null);
-      setStatus(error ? error.message : data.session ? "Live state on" : "Sign in to sync");
+      if (error) {
+        setStatus("Could not check live state. Local mode still works.");
+        return;
+      }
+
+      if (data.session) {
+        setStatus("Live state on");
+        return;
+      }
+
+      if (!isCallbackErrorStatus(callbackStatus)) {
+        setStatus("Sign in to sync");
+      }
     });
 
     const {
@@ -44,7 +69,7 @@ export function AuthPanel() {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [callbackStatus, supabase]);
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,7 +93,11 @@ export function AuthPanel() {
       },
     });
     setIsSubmitting(false);
-    setStatus(error ? error.message : "Check your email for the sign-in link.");
+    setStatus(
+      error
+        ? "We couldn't send the sign-in link. Check the email and try again."
+        : "Check your email for the sign-in link.",
+    );
   }
 
   async function signOut() {
@@ -79,7 +108,11 @@ export function AuthPanel() {
     setIsSubmitting(true);
     const { error } = await supabase.auth.signOut();
     setIsSubmitting(false);
-    setStatus(error ? error.message : "Signed out. Local mode still works.");
+    setStatus(
+      error
+        ? "We couldn't sign you out. Try again."
+        : "Signed out. Local mode still works.",
+    );
   }
 
   return (
@@ -124,5 +157,26 @@ export function AuthPanel() {
         </form>
       )}
     </div>
+  );
+}
+
+function getAuthCallbackStatus(): AuthCallbackStatus | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const status = new URLSearchParams(window.location.search).get("auth");
+  return isAuthCallbackStatus(status) ? status : null;
+}
+
+function isAuthCallbackStatus(value: string | null): value is AuthCallbackStatus {
+  return value !== null && value in AUTH_CALLBACK_STATUS_MESSAGES;
+}
+
+function isCallbackErrorStatus(status: AuthCallbackStatus | null): boolean {
+  return (
+    status === "missing-code" ||
+    status === "callback-error" ||
+    status === "unconfigured"
   );
 }
