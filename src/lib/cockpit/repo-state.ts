@@ -17,6 +17,12 @@ export type RepoState = {
   errors: string[];
 };
 
+type GitStatusSnapshot = {
+  branch: string;
+  dirtyFiles: string[];
+  errors: string[];
+};
+
 export async function summarizeRepoState(
   cwd = process.cwd(),
 ): Promise<RepoState> {
@@ -54,13 +60,7 @@ async function readGitStatus(cwd: string): Promise<{
       ["status", "--short", "--branch"],
       { cwd, windowsHide: true },
     );
-    const lines = stdout.split(/\r?\n/).filter(Boolean);
-    const branchLine = lines[0]?.replace(/^##\s*/, "").trim() || "unknown branch";
-    const dirtyFiles = lines
-      .slice(1)
-      .map((line) => line.replace(/^.../, "").trim())
-      .filter(Boolean);
-    return { branch: branchLine, dirtyFiles, errors: [] };
+    return parseGitStatusOutput(stdout);
   } catch (error) {
     return {
       branch: "not a git repository",
@@ -68,6 +68,57 @@ async function readGitStatus(cwd: string): Promise<{
       errors: [`git status failed: ${formatError(error)}`],
     };
   }
+}
+
+export function parseGitStatusOutput(stdout: string): GitStatusSnapshot {
+  const lines = stdout
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length === 0) {
+    return {
+      branch: "unknown branch",
+      dirtyFiles: [],
+      errors: ["git status produced no output"],
+    };
+  }
+
+  const errors: string[] = [];
+  const [firstLine, ...remainingLines] = lines;
+  let branch = "unknown branch";
+  let dirtyLines = remainingLines;
+
+  if (firstLine.startsWith("##")) {
+    branch = firstLine.replace(/^##\s*/, "").trim() || "unknown branch";
+
+    if (branch === "unknown branch") {
+      errors.push("git status output missing branch name");
+    }
+  } else {
+    dirtyLines = lines;
+    errors.push("git status output missing branch line");
+  }
+
+  const dirtyFiles: string[] = [];
+  let unparseableLineCount = 0;
+
+  for (const line of dirtyLines) {
+    const match = line.match(/^[ MADRCUT?!]{2}\s+(.+)$/);
+
+    if (match?.[1]) {
+      dirtyFiles.push(match[1].trim());
+    } else {
+      unparseableLineCount += 1;
+    }
+  }
+
+  if (unparseableLineCount > 0) {
+    errors.push(
+      `git status output contained ${unparseableLineCount} unparseable line(s)`,
+    );
+  }
+
+  return { branch, dirtyFiles, errors };
 }
 
 async function detectPackageManager(cwd: string): Promise<PackageManager> {
