@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
+const MAX_AGENT_HISTORY_MESSAGES = 24;
+const MAX_AGENT_MESSAGE_CHARS = 4000;
+const MESSAGE_TOO_LONG_ERROR = "Keep messages under 4000 characters.";
 
 type StreamEvent =
   | { kind: "text_delta"; text?: string }
@@ -10,12 +13,26 @@ type StreamEvent =
   | { kind: "done" }
   | { kind: string; [k: string]: unknown };
 
+function buildBoundedHistory(messages: ChatMessage[]): ChatMessage[] {
+  const cleaned = messages
+    .map((message) => ({ ...message, content: message.content.trim() }))
+    .filter(
+      (message) =>
+        message.content.length > 0 && message.content.length <= MAX_AGENT_MESSAGE_CHARS,
+    )
+    .slice(-MAX_AGENT_HISTORY_MESSAGES);
+
+  return cleaned[0]?.role === "assistant" ? cleaned.slice(1) : cleaned;
+}
+
 export default function AgentPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const draftTooLong = draft.trim().length > MAX_AGENT_MESSAGE_CHARS;
+  const validationError = draftTooLong ? MESSAGE_TOO_LONG_ERROR : error;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -24,10 +41,15 @@ export default function AgentPage() {
   const send = useCallback(async () => {
     const text = draft.trim();
     if (!text || streaming) return;
+    if (text.length > MAX_AGENT_MESSAGE_CHARS) {
+      setError(MESSAGE_TOO_LONG_ERROR);
+      return;
+    }
+
     setError(null);
     setDraft("");
 
-    const history: ChatMessage[] = [...messages, { role: "user", content: text }];
+    const history = buildBoundedHistory([...messages, { role: "user", content: text }]);
     setMessages([...history, { role: "assistant", content: "" }]);
     setStreaming(true);
 
@@ -107,7 +129,7 @@ export default function AgentPage() {
             </div>
           </div>
         ))}
-        {error && <p className="px-1 text-sm text-amber-400">{error}</p>}
+        {validationError && <p className="px-1 text-sm text-amber-400">{validationError}</p>}
       </div>
 
       <form
@@ -132,7 +154,7 @@ export default function AgentPage() {
         />
         <button
           type="submit"
-          disabled={streaming || !draft.trim()}
+          disabled={streaming || !draft.trim() || draftTooLong}
           className="h-[2.75rem] rounded-2xl bg-neutral-100 px-5 font-medium text-neutral-900 disabled:opacity-40"
         >
           {streaming ? "…" : "Send"}
