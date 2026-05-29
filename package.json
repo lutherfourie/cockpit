@@ -9,10 +9,14 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "ext:dev": "pnpm --filter @cockpit/browser-extension dev",
+    "ext:build": "pnpm --filter @cockpit/browser-extension build",
+    "ext:test": "pnpm --filter @cockpit/browser-extension test"
   },
   "dependencies": {
     "@copilotkit/react-core": "1.57.1",
+    "@cockpit/contracts": "workspace:*",
     "@copilotkit/runtime": "1.57.1",
     "@openai/agents": "^0.11.4",
     "@openuidev/react-headless": "^0.8.1",

@@ -20,6 +20,7 @@ export type SessionState = {
 
 export interface CockpitMemoryStore {
   loadSessionState(sessionId?: string): Promise<SessionState | null>;
+  loadLatestSessionState(): Promise<SessionState | null>;
   loadChatMessages?(sessionId?: string): Promise<ThoughtChatHistoryMessage[]>;
   loadAssistantEvents?(sessionId?: string): Promise<AssistantEvent[]>;
   loadParkingLotItems?(sessionId?: string): Promise<string[]>;
@@ -54,6 +55,10 @@ export class NullCockpitMemoryStore implements CockpitMemoryStore {
   ) {}
 
   async loadSessionState(): Promise<SessionState | null> {
+    return null;
+  }
+
+  async loadLatestSessionState(): Promise<SessionState | null> {
     return null;
   }
 
@@ -110,6 +115,29 @@ export class SupabaseCockpitMemoryStore implements CockpitMemoryStore {
       .select("id,title,active_goal,next_action,proof_needed,status")
       .eq("id", sessionId)
       .eq("user_id", this.userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      return null;
+    }
+
+    return {
+      id: data.id,
+      title: data.title,
+      activeGoal: data.active_goal,
+      nextAction: data.next_action,
+      proofNeeded: data.proof_needed,
+      status: data.status,
+    };
+  }
+
+  async loadLatestSessionState(): Promise<SessionState | null> {
+    const { data, error } = await this.supabase
+      .from("cockpit_sessions")
+      .select("id,title,active_goal,next_action,proof_needed,status")
+      .eq("user_id", this.userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error || !data) {
