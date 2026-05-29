@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -26,6 +27,8 @@ agent-*.png
 
 # production
 /build
+/apps/browser-extension/.output/
+/apps/browser-extension/.wxt/
 
 # misc
 .DS_Store
