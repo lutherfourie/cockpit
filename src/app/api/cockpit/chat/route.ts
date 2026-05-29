@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
 
 import { ThoughtChatInputSchema, runThoughtChat } from "@/lib/cockpit/thought-chat";
 import {
@@ -14,9 +13,18 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const body = await readRequestJson(request);
+  const parsed = ThoughtChatInputSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid thought chat input." },
+      { status: 400 },
+    );
+  }
+
   try {
-    const body = await request.json();
-    const input = ThoughtChatInputSchema.parse(body);
+    const input = parsed.data;
     const store = await createStore();
     const sessionId = readSessionId(body);
     const storedHistory = await store.loadChatMessages(sessionId);
@@ -36,15 +44,19 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(result);
-  } catch (error) {
-    const message =
-      error instanceof ZodError
-        ? "Invalid thought chat input."
-        : error instanceof Error
-          ? error.message
-          : "Thought chat request failed.";
+  } catch {
+    return NextResponse.json(
+      { error: "Thought chat request failed." },
+      { status: 500 },
+    );
+  }
+}
 
-    return NextResponse.json({ error: message }, { status: 400 });
+async function readRequestJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return undefined;
   }
 }
 

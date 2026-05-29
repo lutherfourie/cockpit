@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ZodError, z } from "zod";
+import { z } from "zod";
 
 import {
   AppendAssistantEventInputSchema,
@@ -26,21 +26,43 @@ const AssistantTurnRequestSchema = z.object({
 });
 
 export async function GET(request: Request) {
-  const store = await createStore();
-  const { searchParams } = new URL(request.url);
-  const sessionId = readSessionId(searchParams.get("sessionId"));
-  const events = await store.loadAssistantEvents?.(sessionId);
+  try {
+    const store = await createStore();
+    const { searchParams } = new URL(request.url);
+    const sessionId = readSessionId(searchParams.get("sessionId"));
+    const events = await store.loadAssistantEvents?.(sessionId);
 
-  return NextResponse.json({ events: events ?? [] });
+    return NextResponse.json({ events: events ?? [] });
+  } catch {
+    return NextResponse.json(
+      { error: "Assistant request failed." },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(request: Request) {
-  try {
-    const body = await request.json();
-    const store = await createStore();
+  const body = await readRequestJson(request);
 
+  if (body === undefined) {
+    return NextResponse.json(
+      { error: "Invalid assistant request input." },
+      { status: 400 },
+    );
+  }
+
+  try {
     if (isAssistantTurnRequest(body)) {
-      const input = AssistantTurnRequestSchema.parse(body);
+      const parsed = AssistantTurnRequestSchema.safeParse(body);
+      if (!parsed.success) {
+        return NextResponse.json(
+          { error: "Invalid assistant request input." },
+          { status: 400 },
+        );
+      }
+
+      const input = parsed.data;
+      const store = await createStore();
       const priorEvents = (await store.loadAssistantEvents?.(input.sessionId)) ?? [];
       const userEvent = await appendTimelineEvent(store, {
         sessionId: input.sessionId,
@@ -85,20 +107,33 @@ export async function POST(request: Request) {
       });
     }
 
-    const eventInput = AppendAssistantEventInputSchema.parse(body);
+    const parsed = AppendAssistantEventInputSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Invalid assistant event input." },
+        { status: 400 },
+      );
+    }
+
+    const eventInput = parsed.data;
+    const store = await createStore();
     await applyAssistantActionSideEffect(store, eventInput);
     const event = await appendTimelineEvent(store, eventInput);
 
     return NextResponse.json({ event });
-  } catch (error) {
-    const message =
-      error instanceof ZodError
-        ? "Invalid assistant event input."
-        : error instanceof Error
-          ? error.message
-          : "Assistant request failed.";
+  } catch {
+    return NextResponse.json(
+      { error: "Assistant request failed." },
+      { status: 500 },
+    );
+  }
+}
 
-    return NextResponse.json({ error: message }, { status: 400 });
+async function readRequestJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return undefined;
   }
 }
 
