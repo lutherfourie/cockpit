@@ -14,42 +14,57 @@
   ],
   "properties": {
     "currentGoal": {
+      "description": "The single active goal the cockpit should keep in view.",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "nextAction": {
+      "description": "The one concrete next action that moves the active goal forward.",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "proofNeeded": {
+      "description": "The evidence that will prove the next action is complete.",
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "parkingLot": {
+      "description": "Bounded distracting-but-valid ideas that should not become the next action.",
       "type": "array",
       "maxItems": 5,
       "items": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "\\S"
       }
     },
     "handoff": {
-      "type": ["string", "null"]
+      "description": "Optional concise prompt for continuing the same goal in another turn or agent.",
+      "type": ["string", "null"],
+      "minLength": 1,
+      "pattern": "\\S"
     },
     "assumptions": {
+      "description": "Bounded assumptions that shaped this cockpit state.",
       "type": "array",
       "maxItems": 5,
       "items": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "\\S"
       }
     },
     "blockers": {
+      "description": "Bounded blockers or missing facts that prevent straightforward progress.",
       "type": "array",
       "maxItems": 5,
       "items": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "\\S"
       }
     }
   }

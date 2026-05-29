@@ -10,12 +10,37 @@ export const COCKPIT_MODES = [
   "handoff",
 ] as const;
 
+const MAX_LIST_ITEMS = 5;
+
+const OUTPUT_FIELD_DESCRIPTIONS = {
+  currentGoal: "The single active goal the cockpit should keep in view.",
+  nextAction: "The one concrete next action that moves the active goal forward.",
+  proofNeeded: "The evidence that will prove the next action is complete.",
+  parkingLot: "Bounded distracting-but-valid ideas that should not become the next action.",
+  handoff: "Optional concise prompt for continuing the same goal in another turn or agent.",
+  assumptions: "Bounded assumptions that shaped this cockpit state.",
+  blockers: "Bounded blockers or missing facts that prevent straightforward progress.",
+} as const;
+
 export const CockpitModeSchema = z.enum(COCKPIT_MODES);
 
-export const AgentInputSchema = z.object({
-  message: z.string().trim().min(1, "Message is required."),
-  sessionId: z.string().uuid().optional(),
-  mode: CockpitModeSchema.default("auto"),
+export const AgentInputSchema = z.strictObject({
+  /** Raw user thought or instruction to compress into cockpit state. */
+  message: z
+    .string()
+    .trim()
+    .min(1, "Message is required.")
+    .describe("Raw user thought or instruction to compress into cockpit state."),
+  /** Optional persisted cockpit session identifier. */
+  sessionId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("Optional persisted cockpit session identifier."),
+  /** Assistant operating mode for shaping the next cockpit output. */
+  mode: CockpitModeSchema.default("auto").describe(
+    "Assistant operating mode for shaping the next cockpit output.",
+  ),
 });
 
 export const CockpitProviderSchema = z.enum([
@@ -25,26 +50,83 @@ export const CockpitProviderSchema = z.enum([
   "cerebras",
 ]);
 
-export const CockpitAgentOutputSchema = z.object({
-  currentGoal: z.string().trim().min(1),
-  nextAction: z.string().trim().min(1),
-  proofNeeded: z.string().trim().min(1),
-  parkingLot: z.array(z.string().trim().min(1)).default([]),
-  handoff: z.string().trim().min(1).optional(),
-  assumptions: z.array(z.string().trim().min(1)).default([]),
-  blockers: z.array(z.string().trim().min(1)).default([]),
+export const CockpitAgentOutputSchema = z.strictObject({
+  /** The single active goal the cockpit should keep in view. */
+  currentGoal: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(OUTPUT_FIELD_DESCRIPTIONS.currentGoal),
+  /** The one concrete next action that moves the active goal forward. */
+  nextAction: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(OUTPUT_FIELD_DESCRIPTIONS.nextAction),
+  /** The evidence that will prove the next action is complete. */
+  proofNeeded: z
+    .string()
+    .trim()
+    .min(1)
+    .describe(OUTPUT_FIELD_DESCRIPTIONS.proofNeeded),
+  /** Bounded distracting-but-valid ideas that should not become the next action. */
+  parkingLot: z
+    .array(z.string().trim().min(1))
+    .max(MAX_LIST_ITEMS)
+    .default([])
+    .describe(OUTPUT_FIELD_DESCRIPTIONS.parkingLot),
+  /** Optional concise prompt for continuing the same goal in another turn or agent. */
+  handoff: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(OUTPUT_FIELD_DESCRIPTIONS.handoff),
+  /** Bounded assumptions that shaped this cockpit state. */
+  assumptions: z
+    .array(z.string().trim().min(1))
+    .max(MAX_LIST_ITEMS)
+    .default([])
+    .describe(OUTPUT_FIELD_DESCRIPTIONS.assumptions),
+  /** Bounded blockers or missing facts that prevent straightforward progress. */
+  blockers: z
+    .array(z.string().trim().min(1))
+    .max(MAX_LIST_ITEMS)
+    .default([])
+    .describe(OUTPUT_FIELD_DESCRIPTIONS.blockers),
 });
 
-export const CockpitPersistenceSchema = z.object({
-  saved: z.boolean(),
-  source: z.enum(["supabase", "local", "none"]),
-  reason: z.string().optional(),
+export const CockpitPersistenceSchema = z.strictObject({
+  /** Whether this turn was persisted to durable storage. */
+  saved: z
+    .boolean()
+    .describe("Whether this turn was persisted to durable storage."),
+  /** Storage backend that handled persistence for this turn. */
+  source: z
+    .enum(["supabase", "local", "none"])
+    .describe("Storage backend that handled persistence for this turn."),
+  /** Optional explanation when persistence was skipped or degraded. */
+  reason: z
+    .string()
+    .optional()
+    .describe("Optional explanation when persistence was skipped or degraded."),
 });
 
-export const CockpitTurnResultSchema = z.object({
-  output: CockpitAgentOutputSchema,
-  sessionId: z.string().uuid().optional(),
-  persistence: CockpitPersistenceSchema,
+export const CockpitTurnResultSchema = z.strictObject({
+  /** Schema-valid cockpit state returned for the current turn. */
+  output: CockpitAgentOutputSchema.describe(
+    "Schema-valid cockpit state returned for the current turn.",
+  ),
+  /** Persisted session identifier for the current or resumed cockpit session. */
+  sessionId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("Persisted session identifier for the current or resumed cockpit session."),
+  /** Persistence status for the current cockpit turn. */
+  persistence: CockpitPersistenceSchema.describe(
+    "Persistence status for the current cockpit turn.",
+  ),
 });
 
 export type CockpitMode = z.infer<typeof CockpitModeSchema>;
@@ -53,8 +135,6 @@ export type AgentInput = z.infer<typeof AgentInputSchema>;
 export type CockpitAgentOutput = z.infer<typeof CockpitAgentOutputSchema>;
 export type CockpitPersistence = z.infer<typeof CockpitPersistenceSchema>;
 export type CockpitTurnResult = z.infer<typeof CockpitTurnResultSchema>;
-
-const MAX_LIST_ITEMS = 5;
 
 function cleanText(value: string, fallback: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
