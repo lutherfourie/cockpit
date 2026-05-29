@@ -100,6 +100,25 @@ export function AuthPanel() {
     );
   }
 
+  async function signInWithGoogle() {
+    if (!supabase) {
+      setStatus("Live state unavailable: Supabase is not configured.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+    if (error) {
+      setIsSubmitting(false);
+      setStatus("We couldn't start Google sign-in. Try again.");
+    }
+  }
+
   async function signOut() {
     if (!supabase) {
       return;
@@ -133,28 +152,39 @@ export function AuthPanel() {
           Sign out
         </button>
       ) : (
-        <form onSubmit={signIn} className="grid gap-2">
-          <label className="sr-only" htmlFor="cockpit-auth-email">
-            Email
-          </label>
-          <input
-            id="cockpit-auth-email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            disabled={!supabase || isSubmitting}
-            placeholder="email@example.com"
-            className="cockpit-input min-h-8 border px-2 text-xs outline-none disabled:cursor-not-allowed"
-          />
+        <div className="grid gap-2">
           <button
-            type="submit"
+            type="button"
+            onClick={signInWithGoogle}
             disabled={!supabase || isSubmitting}
             className="cockpit-button inline-flex min-h-8 items-center justify-center gap-2 border px-2 font-medium disabled:cursor-not-allowed"
           >
             <LogIn className="size-4" />
-            Email link
+            Continue with Google
           </button>
-        </form>
+          <form onSubmit={signIn} className="grid gap-2">
+            <label className="sr-only" htmlFor="cockpit-auth-email">
+              Email
+            </label>
+            <input
+              id="cockpit-auth-email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              disabled={!supabase || isSubmitting}
+              placeholder="email@example.com"
+              className="cockpit-input min-h-8 border px-2 text-xs outline-none disabled:cursor-not-allowed"
+            />
+            <button
+              type="submit"
+              disabled={!supabase || isSubmitting}
+              className="cockpit-button inline-flex min-h-8 items-center justify-center gap-2 border px-2 font-medium disabled:cursor-not-allowed"
+            >
+              <LogIn className="size-4" />
+              Email link
+            </button>
+          </form>
+        </div>
       )}
     </div>
   );

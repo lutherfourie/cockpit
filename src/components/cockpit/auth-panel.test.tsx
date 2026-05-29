@@ -71,6 +71,35 @@ describe("AuthPanel", () => {
     expect(container.textContent).not.toContain("service_role");
   });
 
+  it("starts Google OAuth from the dedicated button", async () => {
+    const supabase = makeSupabaseClient();
+    createSupabaseBrowserClientMock.mockReturnValue(supabase);
+
+    await renderAuthPanel();
+
+    const googleButton = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    ).find((button) => button.textContent?.includes("Continue with Google"));
+
+    if (!googleButton) {
+      throw new Error("Google button did not render");
+    }
+
+    await act(async () => {
+      googleButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(supabase.auth.signInWithOAuth).toHaveBeenCalledWith({
+      provider: "google",
+      options: {
+        redirectTo: "http://localhost:3000/auth/callback",
+      },
+    });
+  });
+
   async function renderAuthPanel() {
     await act(async () => {
       root.render(<AuthPanel />);
@@ -113,6 +142,7 @@ function makeSupabaseClient(overrides: Partial<MockAuth> = {}) {
       },
     })),
     signInWithOtp: vi.fn(async () => ({ data: {}, error: null })),
+    signInWithOAuth: vi.fn(async () => ({ data: {}, error: null })),
     signOut: vi.fn(async () => ({ error: null })),
     ...overrides,
   };
@@ -124,6 +154,7 @@ type MockAuth = {
   getSession: ReturnType<typeof vi.fn>;
   onAuthStateChange: ReturnType<typeof vi.fn>;
   signInWithOtp: ReturnType<typeof vi.fn>;
+  signInWithOAuth: ReturnType<typeof vi.fn>;
   signOut: ReturnType<typeof vi.fn>;
 };
 
