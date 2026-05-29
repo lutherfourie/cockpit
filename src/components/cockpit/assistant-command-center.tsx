@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, type ReactNode, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useState } from "react";
 import {
   CheckCircle2,
   FileText,
@@ -14,6 +14,12 @@ import {
 } from "lucide-react";
 
 import type { AssistantEvent } from "@/lib/cockpit/assistant-events";
+
+const ACTIONABLE_EVENT_TYPES = new Set<AssistantEvent["type"]>([
+  "assistant_message",
+  "artifact",
+  "tool_result",
+]);
 
 type AssistantCommandCenterProps = {
   isOpen: boolean;
@@ -39,9 +45,25 @@ export function AssistantCommandCenter({
   onCreateHandoff,
 }: AssistantCommandCenterProps) {
   const [draft, setDraft] = useState("");
-  const selectedEvent = [...events]
-    .reverse()
-    .find((event) => event.type === "assistant_message" || event.type === "artifact");
+  const actionableEvents = events.filter(isActionableEvent);
+  const selectedEvent = actionableEvents[actionableEvents.length - 1];
+  const draftIsEmpty = draft.trim().length === 0;
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) {
     return null;
@@ -50,7 +72,7 @@ export function AssistantCommandCenter({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = draft.trim();
-    if (!trimmed) {
+    if (!trimmed || isSubmitting) {
       return;
     }
 
@@ -63,6 +85,9 @@ export function AssistantCommandCenter({
       <div className="cockpit-command-center-backdrop absolute inset-0" />
       <section
         className="cockpit-command-center-shell cockpit-surface relative mx-auto grid h-full max-w-[1320px] overflow-hidden border"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assistant-command-center-title"
         aria-label="Assistant Command Center"
       >
         <header className="cockpit-command-center-header border-b px-4 py-3">
@@ -71,7 +96,9 @@ export function AssistantCommandCenter({
               <Sparkles className="size-4" />
               Cockpit assistant
             </p>
-            <h2 className="text-xl font-semibold">Assistant Command Center</h2>
+            <h2 id="assistant-command-center-title" className="text-xl font-semibold">
+              Assistant Command Center
+            </h2>
             <p className="cockpit-muted mt-1 text-xs">{runtimeStatus}</p>
           </div>
           <button
@@ -87,12 +114,22 @@ export function AssistantCommandCenter({
         <div className="grid min-h-0 flex-1 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
           <aside className="cockpit-command-side hidden border-r p-4 lg:block">
             <h3 className="cockpit-muted mb-3 text-xs font-semibold uppercase tracking-normal">
-              Threads
+              Session
             </h3>
-            <div className="cockpit-mini-readout border px-3 py-2 text-xs">
+            <div className="cockpit-mini-readout mb-2 border px-3 py-2 text-xs">
               <History className="size-4" />
-              <span>Active session</span>
+              <span>Timeline</span>
               <strong>{events.length}</strong>
+            </div>
+            <div className="cockpit-mini-readout mb-2 border px-3 py-2 text-xs">
+              <Sparkles className="size-4" />
+              <span>Actionable outputs</span>
+              <strong>{actionableEvents.length}</strong>
+            </div>
+            <div className="cockpit-mini-readout border px-3 py-2 text-xs">
+              <CheckCircle2 className="size-4" />
+              <span>Status</span>
+              <strong>{isSubmitting ? "Sending" : "Ready"}</strong>
             </div>
           </aside>
 
@@ -119,17 +156,24 @@ export function AssistantCommandCenter({
                       <p className="whitespace-pre-wrap text-sm leading-6">
                         {event.content}
                       </p>
-                      {event.role === "assistant" ||
-                      event.type === "artifact" ||
-                      event.type === "tool_result" ? (
+                      {isActionableEvent(event) ? (
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <ActionButton onClick={() => onPromote(event.content)}>
+                          <ActionButton
+                            icon={<CheckCircle2 className="size-3.5" />}
+                            onClick={() => onPromote(event.content)}
+                          >
                             Use in Cockpit
                           </ActionButton>
-                          <ActionButton onClick={() => onPark(event.content)}>
+                          <ActionButton
+                            icon={<ParkingCircle className="size-3.5" />}
+                            onClick={() => onPark(event.content)}
+                          >
                             Park
                           </ActionButton>
-                          <ActionButton onClick={() => onCreateHandoff(event.content)}>
+                          <ActionButton
+                            icon={<FileText className="size-3.5" />}
+                            onClick={() => onCreateHandoff(event.content)}
+                          >
                             Handoff
                           </ActionButton>
                         </div>
@@ -165,7 +209,7 @@ export function AssistantCommandCenter({
                 />
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || draftIsEmpty}
                   className="cockpit-primary inline-flex min-h-12 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? (
@@ -173,7 +217,7 @@ export function AssistantCommandCenter({
                   ) : (
                     <SendHorizonal className="size-4" />
                   )}
-                  Ask
+                  {isSubmitting ? "Sending" : "Ask"}
                 </button>
               </div>
             </form>
@@ -184,24 +228,56 @@ export function AssistantCommandCenter({
               Actions
             </h3>
             {selectedEvent ? (
-              <div className="cockpit-panel cockpit-panel-action border p-3">
-                <p className="mb-3 text-sm leading-5">{selectedEvent.content}</p>
+              <div
+                className="cockpit-panel cockpit-panel-action border p-3"
+                data-testid="assistant-action-panel"
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="cockpit-muted text-xs font-semibold uppercase tracking-normal">
+                      Latest actionable output
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {formatEventLabel(selectedEvent)}
+                    </p>
+                  </div>
+                  <span className="cockpit-muted text-xs">
+                    {formatEventTime(selectedEvent.createdAt)}
+                  </span>
+                </div>
+                <p className="mb-3 whitespace-pre-wrap text-sm leading-5">
+                  {selectedEvent.content}
+                </p>
                 <div className="grid gap-2">
-                  <ActionButton onClick={() => onPromote(selectedEvent.content)}>
+                  <ActionButton
+                    icon={<CheckCircle2 className="size-3.5" />}
+                    onClick={() => onPromote(selectedEvent.content)}
+                  >
                     Use in Cockpit
                   </ActionButton>
-                  <ActionButton onClick={() => onPark(selectedEvent.content)}>
+                  <ActionButton
+                    icon={<ParkingCircle className="size-3.5" />}
+                    onClick={() => onPark(selectedEvent.content)}
+                  >
                     Park
                   </ActionButton>
-                  <ActionButton onClick={() => onCreateHandoff(selectedEvent.content)}>
+                  <ActionButton
+                    icon={<FileText className="size-3.5" />}
+                    onClick={() => onCreateHandoff(selectedEvent.content)}
+                  >
                     Create handoff
                   </ActionButton>
                 </div>
               </div>
             ) : (
-              <p className="cockpit-muted text-sm leading-6">
-                Assistant outputs and tool cards will collect here.
-              </p>
+              <div
+                className="cockpit-panel cockpit-panel-quiet border p-3"
+                data-testid="assistant-action-panel"
+              >
+                <p className="cockpit-muted text-sm leading-6">
+                  No assistant output ready for cockpit actions.
+                </p>
+              </div>
             )}
           </aside>
         </div>
@@ -270,9 +346,11 @@ function ActivityItem({
 
 function ActionButton({
   children,
+  icon,
   onClick,
 }: {
   children: ReactNode;
+  icon?: ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -281,20 +359,27 @@ function ActionButton({
       onClick={onClick}
       className="cockpit-button inline-flex min-h-8 items-center justify-center gap-2 border px-3 text-xs font-semibold"
     >
-      {children === "Park" ? <ParkingCircle className="size-3.5" /> : null}
+      {icon}
       {children}
     </button>
   );
 }
 
+function isActionableEvent(event: AssistantEvent): boolean {
+  return event.role !== "user" && ACTIONABLE_EVENT_TYPES.has(event.type);
+}
+
 function formatEventLabel(event: AssistantEvent): string {
-  return event.type.replace(/_/g, " ");
+  return event.type
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function formatEventTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "";
+    return "Time unknown";
   }
 
   return date.toLocaleTimeString([], {
