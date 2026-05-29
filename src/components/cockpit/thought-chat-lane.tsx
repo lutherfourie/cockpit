@@ -1,7 +1,12 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ChevronDown, MessageSquareText, SendHorizonal } from "lucide-react";
+import {
+  ChevronDown,
+  Loader2,
+  MessageSquareText,
+  SendHorizonal,
+} from "lucide-react";
 
 import type { ThoughtChatMessage } from "@/lib/cockpit/kernel-state";
 import type { ThoughtChatResult } from "@/lib/cockpit/thought-chat";
@@ -14,6 +19,10 @@ type ThoughtChatLaneProps = {
   testId?: string;
 };
 
+const MAX_VISIBLE_MESSAGES = 6;
+const MAX_HISTORY_MESSAGES = 12;
+const MAX_DRAFT_CHARACTERS = 600;
+
 export function ThoughtChatLane({
   messages,
   onAppendMessage,
@@ -21,14 +30,30 @@ export function ThoughtChatLane({
   compact = false,
   testId = "thought-chat",
 }: ThoughtChatLaneProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(() => messages.length > 0);
   const [draft, setDraft] = useState("");
   const [promoteText, setPromoteText] = useState("");
   const [isPhrasing, setIsPhrasing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const laneId = `${testId}-lane`;
+  const inputId = `${testId}-input`;
+  const visibleMessages = messages.slice(-MAX_VISIBLE_MESSAGES);
+  const hiddenMessageCount = Math.max(
+    0,
+    messages.length - visibleMessages.length,
+  );
+  const hasDraft = draft.trim().length > 0;
+  const statusText =
+    messages.length > 0
+      ? `Latest ${visibleMessages.length} of ${messages.length}`
+      : "No scratch history";
 
   async function phraseThought(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isPhrasing) {
+      return;
+    }
+
     const trimmed = draft.trim();
     if (!trimmed) {
       setError("Add a thought to phrase.");
@@ -38,16 +63,20 @@ export function ThoughtChatLane({
     const userMessage = createThoughtMessage("user", trimmed);
     onAppendMessage(userMessage);
     setDraft("");
+    setPromoteText("");
     setError(null);
     setIsPhrasing(true);
 
     try {
+      const boundedHistory = messages
+        .slice(-MAX_HISTORY_MESSAGES)
+        .map(({ role, content }) => ({ role, content }));
       const response = await fetch("/api/cockpit/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: trimmed,
-          history: messages.map(({ role, content }) => ({ role, content })),
+          history: boundedHistory,
         }),
       });
       const payload = (await response.json()) as Partial<ThoughtChatResult> & {
@@ -79,13 +108,20 @@ export function ThoughtChatLane({
       <button
         type="button"
         aria-expanded={isOpen}
-        aria-controls="thought-chat-lane"
+        aria-controls={laneId}
         onClick={() => setIsOpen((current) => !current)}
-        className="cockpit-button flex min-h-10 w-full items-center justify-between gap-3 border px-3 text-sm font-semibold"
+        className="cockpit-button flex min-h-12 w-full items-center justify-between gap-3 border px-3 py-2 text-left text-sm font-semibold"
       >
-        <span className="inline-flex items-center gap-2">
-          <MessageSquareText className="size-4" />
-          Assistant / Thought Chat
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="cockpit-mini-readout inline-flex size-8 shrink-0 items-center justify-center border">
+            <MessageSquareText className="size-4" />
+          </span>
+          <span className="min-w-0">
+            <span className="block">Assistant / Thought Chat</span>
+            <span className="cockpit-muted block text-xs font-medium">
+              {isPhrasing ? "Phrasing" : statusText}
+            </span>
+          </span>
         </span>
         <ChevronDown
           className={[
@@ -96,17 +132,23 @@ export function ThoughtChatLane({
       </button>
 
       {isOpen ? (
-        <div id="thought-chat-lane" className="mt-3 grid gap-3">
-          {messages.length > 0 ? (
+        <div id={laneId} className="mt-3 grid gap-3">
+          {visibleMessages.length > 0 ? (
             <div className="grid max-h-48 gap-2 overflow-auto text-sm">
-              {messages.map((message) => (
+              {hiddenMessageCount > 0 ? (
+                <p className="cockpit-muted text-xs font-medium">
+                  Latest {visibleMessages.length} of {messages.length} shown.
+                  {hiddenMessageCount} older hidden.
+                </p>
+              ) : null}
+              {visibleMessages.map((message) => (
                 <div
                   key={message.id}
                   className={[
-                    "border px-3 py-2",
+                    "border px-3 py-2 text-left",
                     message.role === "assistant"
                       ? "cockpit-mini-readout"
-                      : "cockpit-alert",
+                      : "cockpit-surface-alt",
                   ].join(" ")}
                 >
                   <p className="cockpit-muted mb-1 text-xs font-semibold uppercase tracking-normal">
@@ -116,31 +158,59 @@ export function ThoughtChatLane({
                 </div>
               ))}
             </div>
-          ) : null}
+          ) : (
+            <div className="cockpit-mini-readout border px-3 py-2 text-sm">
+              No scratch messages yet.
+            </div>
+          )}
 
           {error ? (
-            <div className="cockpit-alert border px-3 py-2 text-sm">{error}</div>
+            <div className="cockpit-alert border px-3 py-2 text-sm" role="alert">
+              {error}
+            </div>
           ) : null}
 
-          <form onSubmit={phraseThought} className="grid gap-2 md:grid-cols-[1fr_auto]">
-            <label className="sr-only" htmlFor="thought-chat-input">
+          <form onSubmit={phraseThought} className="grid gap-2">
+            <label className="sr-only" htmlFor={inputId}>
               Thought Chat
             </label>
-            <input
-              id="thought-chat-input"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Help me put this into words"
-              className="cockpit-input min-h-10 border px-3 text-sm outline-none"
-            />
-            <button
-              type="submit"
-              disabled={isPhrasing}
-              className="cockpit-primary inline-flex min-h-10 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:cursor-not-allowed"
-            >
-              <SendHorizonal className="size-4" />
-              Phrase
-            </button>
+            <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+              <textarea
+                id={inputId}
+                value={draft}
+                maxLength={MAX_DRAFT_CHARACTERS}
+                rows={compact ? 2 : 3}
+                onChange={(event) => {
+                  setDraft(event.target.value.slice(0, MAX_DRAFT_CHARACTERS));
+                  if (error && event.target.value.trim()) {
+                    setError(null);
+                  }
+                }}
+                placeholder="Help me put this into words"
+                className="cockpit-input min-h-20 resize-none border px-3 py-3 text-sm leading-5 outline-none"
+              />
+              <button
+                type="submit"
+                disabled={isPhrasing || !hasDraft}
+                aria-busy={isPhrasing}
+                className="cockpit-primary inline-flex min-h-10 items-center justify-center gap-2 px-4 text-sm font-semibold disabled:cursor-not-allowed md:min-h-20"
+              >
+                {isPhrasing ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <SendHorizonal className="size-4" />
+                )}
+                {isPhrasing ? "Phrasing" : "Phrase"}
+              </button>
+            </div>
+            <div className="cockpit-muted flex items-center justify-between gap-3 text-xs">
+              <span aria-live="polite">
+                {isPhrasing ? "Request in progress." : statusText}
+              </span>
+              <span>
+                {draft.length}/{MAX_DRAFT_CHARACTERS}
+              </span>
+            </div>
           </form>
 
           {promoteText ? (
